@@ -1069,7 +1069,7 @@ def cmd_update(args):
     install_dir = Path(os.environ.get("CODEX_INSTALL_PREFIX") or default_install_dir).expanduser()
     if (script_root / "install.sh").exists():
         install_dir = script_root
-    repo_url = "https://github.com/bfly123/claude_code_bridge"
+    repo_url = "https://github.com/gitmzc/claude_code_bridge"
 
     print("🔄 Checking for updates...")
 
