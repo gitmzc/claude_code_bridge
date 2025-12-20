@@ -1161,10 +1161,11 @@ def cmd_update(args):
         if not downloaded:
             # Fallback to urllib (may have SSL issues)
             import ssl
+            import urllib.error
             try:
                 urllib.request.urlretrieve(tarball_url, tarball_path)
-            except ssl.SSLError:
-                print("⚠️ SSL certificate verification failed, trying to skip...")
+            except (ssl.SSLError, urllib.error.URLError) as e:
+                print(f"⚠️ SSL certificate verification failed ({e}), trying to skip...")
                 ctx = ssl.create_default_context()
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE

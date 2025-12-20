@@ -660,7 +660,7 @@ Examples:
 - "what does codex think" -> Bash(cask-w, run_in_background=true), then continue
 - "ask codex to review this" -> Bash(cask-w, run_in_background=true), then continue
 - "is codex alive" -> cping
-- "don't wait for reply" -> cask
+- "do not wait for reply" -> cask
 - "get codex result" -> TaskOutput(task_id) or cpend
 
 ## Gemini Collaboration Rules
@@ -690,7 +690,7 @@ Examples:
 - "what does gemini think" -> Bash(gask-w, run_in_background=true), then continue
 - "ask gemini to review this" -> Bash(gask-w, run_in_background=true), then continue
 - "is gemini alive" -> gping
-- "don't wait for reply" -> gask
+- "do not wait for reply" -> gask
 - "get gemini result" -> TaskOutput(task_id) or gpend
 <!-- CCB_CONFIG_END -->
 AI_RULES
