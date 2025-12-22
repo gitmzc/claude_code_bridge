@@ -366,36 +366,50 @@ class GeminiLogReader:
                                 last_gemini_hash = content_hash
                     if last_gemini_content:
                         # Gemini CLI writes messages incrementally: empty -> intermediate -> final.
-                        # Wait briefly to check if more content is coming before returning.
-                        # This "stability check" ensures we get the complete response.
+                        # It may also write multiple messages in sequence.
+                        # Use a stability loop to ensure we get the complete response.
                         if block:
-                            time.sleep(self._poll_interval * 2)
-                            try:
-                                with session.open("r", encoding="utf-8") as f2:
-                                    data2 = json.load(f2)
-                                messages2 = data2.get("messages", [])
-                                if len(messages2) > current_count:
-                                    # More messages arrived, continue waiting
-                                    prev_count = current_count
-                                    prev_mtime = current_mtime
-                                    prev_mtime_ns = current_mtime_ns
-                                    prev_size = current_size
-                                    prev_last_gemini_id = last_gemini_id
-                                    prev_last_gemini_hash = last_gemini_hash
-                                    continue
-                                # Check if the last gemini message content changed (in-place update)
-                                last2 = self._extract_last_gemini(data2)
-                                if last2:
-                                    last2_id, last2_content = last2
-                                    if last2_content:
-                                        last2_hash = hashlib.sha256(last2_content.encode("utf-8")).hexdigest()
-                                        if last2_hash != last_gemini_hash:
-                                            # Content changed, use the newer content
-                                            last_gemini_content = last2_content
-                                            last_gemini_id = last2_id
-                                            last_gemini_hash = last2_hash
-                            except (OSError, json.JSONDecodeError):
-                                pass
+                            # Stability check: wait until no new messages/content for stability_wait seconds
+                            stability_wait = max(0.5, self._poll_interval * 10)
+                            max_stability_checks = 10
+                            for _ in range(max_stability_checks):
+                                time.sleep(stability_wait)
+                                try:
+                                    with session.open("r", encoding="utf-8") as f2:
+                                        data2 = json.load(f2)
+                                    messages2 = data2.get("messages", [])
+                                    if len(messages2) > current_count:
+                                        # More messages arrived, update state and continue stability check
+                                        current_count = len(messages2)
+                                        # Re-extract the last gemini content from all new messages
+                                        for msg in messages2[prev_count:]:
+                                            if msg.get("type") == "gemini":
+                                                content = msg.get("content", "").strip()
+                                                if content:
+                                                    content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+                                                    msg_id = msg.get("id")
+                                                    if msg_id == prev_last_gemini_id and content_hash == prev_last_gemini_hash:
+                                                        continue
+                                                    last_gemini_content = content
+                                                    last_gemini_id = msg_id
+                                                    last_gemini_hash = content_hash
+                                        continue  # Keep checking for more messages
+                                    # Check if the last gemini message content changed (in-place update)
+                                    last2 = self._extract_last_gemini(data2)
+                                    if last2:
+                                        last2_id, last2_content = last2
+                                        if last2_content:
+                                            last2_hash = hashlib.sha256(last2_content.encode("utf-8")).hexdigest()
+                                            if last2_hash != last_gemini_hash:
+                                                # Content changed, use the newer content and continue checking
+                                                last_gemini_content = last2_content
+                                                last_gemini_id = last2_id
+                                                last_gemini_hash = last2_hash
+                                                continue  # Keep checking for more updates
+                                    # No changes detected, content is stable
+                                    break
+                                except (OSError, json.JSONDecodeError):
+                                    break
                         new_state = {
                             "session_path": session,
                             "msg_count": current_count,
