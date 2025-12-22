@@ -296,15 +296,8 @@ class WeztermBackend(TerminalBackend):
         enter_delay = _env_float("CCB_WEZTERM_ENTER_DELAY", 0.01)
         if enter_delay:
             time.sleep(enter_delay)
-        for char in ["\r", "\n", "\r\n"]:
-            try:
-                subprocess.run(
-                    [*self._cli_base_args(), "send-text", "--pane-id", pane_id, "--no-paste", char],
-                    check=True,
-                )
-                return
-            except subprocess.CalledProcessError:
-                continue
+        # Send Enter via stdin to ensure the actual byte (0x0d) is sent, not the string "\r".
+        # Some TUI apps (like Gemini CLI) treat command-line "\r" or "\n" as newlines in input box.
         subprocess.run(
             [*self._cli_base_args(), "send-text", "--pane-id", pane_id, "--no-paste"],
             input=b"\r",
