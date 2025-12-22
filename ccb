@@ -42,6 +42,7 @@ from updater import (
 )
 from constants import VERSION, VALID_PROVIDERS
 from launcher import AILauncher
+from doctor import run_diagnostics
 
 setup_windows_encoding()
 
@@ -338,6 +339,12 @@ def cmd_update(args):
         return 1
 
 
+def cmd_doctor(args):
+    """Run system diagnostics"""
+    passed, failed = run_diagnostics(verbose=getattr(args, 'verbose', False))
+    return 0 if failed == 0 else 1
+
+
 def main():
     parser = argparse.ArgumentParser(description="Claude AI unified launcher", add_help=True)
     subparsers = parser.add_subparsers(dest="command", help="Subcommands")
@@ -367,6 +374,10 @@ def main():
     # version subcommand
     subparsers.add_parser("version", help="Show version and check for updates")
 
+    # doctor subcommand
+    doctor_parser = subparsers.add_parser("doctor", help="Run system diagnostics")
+    doctor_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+
     argv = sys.argv[1:]
     # Backward/shortcut compatibility
     if argv and argv[0] in {"-r", "--resume", "--restore"}:
@@ -391,6 +402,8 @@ def main():
         return cmd_update(args)
     elif args.command == "version":
         return cmd_version(args)
+    elif args.command == "doctor":
+        return cmd_doctor(args)
     else:
         parser.print_help()
         return 1
