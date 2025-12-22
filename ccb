@@ -39,7 +39,6 @@ from updater import (
     get_remote_version_info,
     update_from_git,
     update_from_tarball,
-    pick_temp_base_dir,
 )
 
 setup_windows_encoding()
