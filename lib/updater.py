@@ -93,16 +93,6 @@ def get_remote_version_info() -> dict | None:
     return None
 
 
-def check_version(install_dir: Path) -> tuple[dict, dict | None]:
-    """
-    Check local and remote versions.
-    Returns (local_info, remote_info).
-    """
-    local_info = get_version_info(install_dir)
-    remote_info = get_remote_version_info()
-    return local_info, remote_info
-
-
 def update_from_git(install_dir: Path) -> tuple[bool, str]:
     """
     Update via git pull.

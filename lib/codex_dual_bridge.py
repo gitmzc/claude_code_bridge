@@ -150,6 +150,13 @@ class DualBridge:
         # Append to line buffer and extract complete lines
         self._line_buffer += chunk.decode("utf-8", errors="replace")
 
+        # Guard against memory bloat: if buffer exceeds 1MB without newline, truncate and warn
+        max_buffer_size = 1024 * 1024  # 1MB
+        if len(self._line_buffer) > max_buffer_size and "\n" not in self._line_buffer:
+            self._log_console(f"⚠️ Line buffer exceeded {max_buffer_size} bytes without newline, truncating")
+            self._line_buffer = ""
+            return None
+
         # Process complete lines (newline-delimited JSON)
         if "\n" not in self._line_buffer:
             return None
