@@ -348,23 +348,27 @@ class GeminiLogReader:
                     continue
 
                 if current_count > prev_count:
-                    # Find the LAST gemini message with content (not the first)
-                    # to avoid returning intermediate status messages
-                    last_gemini_content = None
+                    # Collect ALL new gemini messages and merge them
+                    # This ensures we capture multi-message responses (e.g., tool use scenarios)
+                    gemini_contents = []
                     last_gemini_id = None
                     last_gemini_hash = None
+                    seen_hashes = set()
+                    if prev_last_gemini_hash:
+                        seen_hashes.add(prev_last_gemini_hash)
                     for msg in messages[prev_count:]:
                         if msg.get("type") == "gemini":
                             content = msg.get("content", "").strip()
                             if content:
                                 content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
-                                msg_id = msg.get("id")
-                                if msg_id == prev_last_gemini_id and content_hash == prev_last_gemini_hash:
+                                # Skip duplicates (same content we've already seen)
+                                if content_hash in seen_hashes:
                                     continue
-                                last_gemini_content = content
-                                last_gemini_id = msg_id
+                                seen_hashes.add(content_hash)
+                                gemini_contents.append(content)
+                                last_gemini_id = msg.get("id")
                                 last_gemini_hash = content_hash
-                    if last_gemini_content:
+                    if gemini_contents:
                         # Gemini CLI writes messages incrementally: empty -> intermediate -> final.
                         # It may also write multiple messages in sequence.
                         # Use a stability loop to ensure we get the complete response.
@@ -381,17 +385,21 @@ class GeminiLogReader:
                                     if len(messages2) > current_count:
                                         # More messages arrived, update state and continue stability check
                                         current_count = len(messages2)
-                                        # Re-extract the last gemini content from all new messages
+                                        # Re-collect ALL gemini contents from new messages
+                                        gemini_contents = []
+                                        seen_hashes = set()
+                                        if prev_last_gemini_hash:
+                                            seen_hashes.add(prev_last_gemini_hash)
                                         for msg in messages2[prev_count:]:
                                             if msg.get("type") == "gemini":
                                                 content = msg.get("content", "").strip()
                                                 if content:
                                                     content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
-                                                    msg_id = msg.get("id")
-                                                    if msg_id == prev_last_gemini_id and content_hash == prev_last_gemini_hash:
+                                                    if content_hash in seen_hashes:
                                                         continue
-                                                    last_gemini_content = content
-                                                    last_gemini_id = msg_id
+                                                    seen_hashes.add(content_hash)
+                                                    gemini_contents.append(content)
+                                                    last_gemini_id = msg.get("id")
                                                     last_gemini_hash = content_hash
                                         continue  # Keep checking for more messages
                                     # Check if the last gemini message content changed (in-place update)
@@ -401,8 +409,10 @@ class GeminiLogReader:
                                         if last2_content:
                                             last2_hash = hashlib.sha256(last2_content.encode("utf-8")).hexdigest()
                                             if last2_hash != last_gemini_hash:
-                                                # Content changed, use the newer content and continue checking
-                                                last_gemini_content = last2_content
+                                                # Content changed, update the last item in gemini_contents
+                                                if gemini_contents and last_gemini_hash:
+                                                    # Replace the last content with updated version
+                                                    gemini_contents[-1] = last2_content
                                                 last_gemini_id = last2_id
                                                 last_gemini_hash = last2_hash
                                                 continue  # Keep checking for more updates
@@ -410,6 +420,8 @@ class GeminiLogReader:
                                     break
                                 except (OSError, json.JSONDecodeError):
                                     break
+                        # Merge all gemini contents with double newline separator
+                        merged_content = "\n\n".join(gemini_contents)
                         new_state = {
                             "session_path": session,
                             "msg_count": current_count,
@@ -419,7 +431,7 @@ class GeminiLogReader:
                             "last_gemini_id": last_gemini_id,
                             "last_gemini_hash": last_gemini_hash,
                         }
-                        return last_gemini_content, new_state
+                        return merged_content, new_state
                 else:
                     # Some versions write empty gemini message first, then update content in-place.
                     last = self._extract_last_gemini(data)
