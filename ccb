@@ -366,6 +366,30 @@ def cmd_init(args):
     return 0 if config else 1
 
 
+def cmd_completion(args):
+    """Output shell completion script"""
+    shell = args.shell or "zsh"
+
+    # Get the completions directory
+    completions_dir = script_dir / "completions"
+
+    if shell == "zsh":
+        completion_file = completions_dir / "_ccb"
+        if completion_file.exists():
+            print(completion_file.read_text())
+            print("\n# To install, add to your ~/.zshrc:")
+            print(f"# fpath=({completions_dir} $fpath)")
+            print("# autoload -Uz compinit && compinit")
+        else:
+            print(f"Error: Completion file not found: {completion_file}", file=sys.stderr)
+            return 1
+    else:
+        print(f"Unsupported shell: {shell}. Only 'zsh' is supported on macOS.", file=sys.stderr)
+        return 1
+
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="Claude AI unified launcher", add_help=True)
     subparsers = parser.add_subparsers(dest="command", help="Subcommands")
@@ -404,6 +428,10 @@ def main():
     init_parser.add_argument("-c", "--config", type=str, help="Path to save configuration file")
     init_parser.add_argument("-f", "--force", action="store_true", help="Overwrite existing configuration")
 
+    # completion subcommand
+    completion_parser = subparsers.add_parser("completion", help="Output shell completion script")
+    completion_parser.add_argument("shell", nargs="?", default="zsh", help="Shell type (default: zsh)")
+
     argv = sys.argv[1:]
     # Backward/shortcut compatibility
     if argv and argv[0] in {"-r", "--resume", "--restore"}:
@@ -432,6 +460,8 @@ def main():
         return cmd_doctor(args)
     elif args.command == "init":
         return cmd_init(args)
+    elif args.command == "completion":
+        return cmd_completion(args)
     else:
         parser.print_help()
         return 1
