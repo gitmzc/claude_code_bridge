@@ -7,8 +7,10 @@ Sends commands to Codex, supports tmux and WezTerm.
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import os
+import select
 import signal
 import time
 from datetime import datetime, timezone
@@ -62,6 +64,8 @@ class DualBridge:
 
         self.codex_session = TerminalCodexSession(terminal_type, pane_id)
         self._running = True
+        self._fifo_fd: Optional[int] = None
+        self._line_buffer = ""
         signal.signal(signal.SIGTERM, self._handle_signal)
         signal.signal(signal.SIGINT, self._handle_signal)
 
@@ -75,39 +79,101 @@ class DualBridge:
         error_backoff_min = _env_float("CCB_BRIDGE_ERROR_BACKOFF_MIN", 0.05)
         error_backoff_max = _env_float("CCB_BRIDGE_ERROR_BACKOFF_MAX", 0.2)
         error_backoff = max(0.0, min(error_backoff_min, error_backoff_max))
-        while self._running:
-            try:
-                payload = self._read_request()
-                if payload is None:
-                    if idle_sleep:
-                        time.sleep(idle_sleep)
-                    continue
-                self._process_request(payload)
-                error_backoff = max(0.0, min(error_backoff_min, error_backoff_max))
-            except KeyboardInterrupt:
-                self._running = False
-            except Exception as exc:
-                self._log_console(f"❌ Failed to process message: {exc}")
-                self._log_bridge(f"error: {exc}")
-                if error_backoff:
-                    time.sleep(error_backoff)
-                if error_backoff_max:
-                    error_backoff = min(error_backoff_max, max(error_backoff_min, error_backoff * 2))
+        try:
+            while self._running:
+                try:
+                    payload = self._read_request()
+                    if payload is None:
+                        if idle_sleep:
+                            time.sleep(idle_sleep)
+                        continue
+                    self._process_request(payload)
+                    error_backoff = max(0.0, min(error_backoff_min, error_backoff_max))
+                except KeyboardInterrupt:
+                    self._running = False
+                except Exception as exc:
+                    self._log_console(f"❌ Failed to process message: {exc}")
+                    self._log_bridge(f"error: {exc}")
+                    if error_backoff:
+                        time.sleep(error_backoff)
+                    if error_backoff_max:
+                        error_backoff = min(error_backoff_max, max(error_backoff_min, error_backoff * 2))
+        finally:
+            self._close_fifo()
 
         self._log_console("👋 Codex bridge exited")
         return 0
 
     def _read_request(self) -> Optional[Dict[str, Any]]:
+        """Non-blocking FIFO read with select and line buffering."""
         if not self.input_fifo.exists():
             return None
-        try:
-            with self.input_fifo.open("r", encoding="utf-8") as fifo:
-                line = fifo.readline()
-                if not line:
+
+        # Open FIFO with O_RDWR to prevent EOF when no writer is connected
+        # O_NONBLOCK ensures we don't block on open or read
+        if self._fifo_fd is None:
+            try:
+                self._fifo_fd = os.open(
+                    str(self.input_fifo),
+                    os.O_RDWR | os.O_NONBLOCK
+                )
+            except OSError as e:
+                if e.errno == errno.ENOENT:
                     return None
-                return json.loads(line)
-        except (OSError, json.JSONDecodeError):
+                raise
+
+        # Use select to check if data is available (with short timeout)
+        try:
+            readable, _, _ = select.select([self._fifo_fd], [], [], 0.1)
+        except (OSError, ValueError):
+            # fd might be invalid, reset and retry next iteration
+            self._close_fifo()
             return None
+
+        if not readable:
+            return None
+
+        # Read available data
+        try:
+            chunk = os.read(self._fifo_fd, 4096)
+        except OSError as e:
+            if e.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                return None
+            # Other errors: close and retry
+            self._close_fifo()
+            return None
+
+        if not chunk:
+            # EOF - no writers connected, but O_RDWR keeps fd open
+            return None
+
+        # Append to line buffer and extract complete lines
+        self._line_buffer += chunk.decode("utf-8", errors="replace")
+
+        # Process complete lines (newline-delimited JSON)
+        if "\n" not in self._line_buffer:
+            return None
+
+        line, self._line_buffer = self._line_buffer.split("\n", 1)
+        line = line.strip()
+        if not line:
+            return None
+
+        try:
+            return json.loads(line)
+        except json.JSONDecodeError:
+            self._log_console(f"⚠️ Invalid JSON: {line[:100]}")
+            return None
+
+    def _close_fifo(self) -> None:
+        """Close FIFO file descriptor if open."""
+        if self._fifo_fd is not None:
+            try:
+                os.close(self._fifo_fd)
+            except OSError:
+                pass
+            self._fifo_fd = None
+            self._line_buffer = ""
 
     def _process_request(self, payload: Dict[str, Any]) -> None:
         content = payload.get("content", "")
