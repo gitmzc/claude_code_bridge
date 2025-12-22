@@ -11,28 +11,12 @@ import tempfile
 import time
 from pathlib import Path
 
+from constants import VERSION
+
 
 def get_version_info(dir_path: Path) -> dict:
     """Get commit hash, date and version from install directory"""
-    info = {"commit": None, "date": None, "version": None}
-    ccb_file = dir_path / "ccb"
-    if ccb_file.exists():
-        try:
-            content = ccb_file.read_text(encoding='utf-8', errors='replace')
-            for line in content.split('\n')[:60]:
-                line = line.strip()
-                if line.startswith('VERSION') and '=' in line:
-                    info["version"] = line.split('=')[1].strip().strip('"').strip("'")
-                elif line.startswith('GIT_COMMIT') and '=' in line:
-                    val = line.split('=')[1].strip().strip('"').strip("'")
-                    if val:
-                        info["commit"] = val
-                elif line.startswith('GIT_DATE') and '=' in line:
-                    val = line.split('=')[1].strip().strip('"').strip("'")
-                    if val:
-                        info["date"] = val
-        except Exception:
-            pass
+    info = {"commit": None, "date": None, "version": VERSION}
     if shutil.which("git") and (dir_path / ".git").exists():
         result = subprocess.run(
             ["git", "-C", str(dir_path), "log", "-1", "--format=%h|%ci"],
