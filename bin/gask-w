@@ -79,7 +79,7 @@ def main(argv: list[str]) -> int:
 
         # Pure sync wait with heartbeat (default 1 hour, configurable via CCB_SYNC_TIMEOUT)
         sync_timeout = float(os.environ.get("CCB_SYNC_TIMEOUT", "3600.0"))
-        heartbeat_interval = float(os.environ.get("CCB_HEARTBEAT_INTERVAL", "30.0"))
+        heartbeat_interval = float(os.environ.get("CCB_HEARTBEAT_INTERVAL", "2.0"))
 
         # Wait with periodic heartbeat to let Claude know we're still waiting
         # Use monotonic clock to avoid issues with system time changes
