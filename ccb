@@ -44,6 +44,7 @@ from constants import VERSION, VALID_PROVIDERS
 from launcher import AILauncher
 from doctor import run_diagnostics
 from init_wizard import run_init_wizard
+from output import init_output, is_quiet, is_json, print_msg, print_error, set_output, add_to_list, flush_json
 
 setup_windows_encoding()
 
@@ -100,23 +101,29 @@ def cmd_status(args):
         except Exception as e:
             results[provider] = {"status": f"Error: {e}", "active": False}
 
-    print(f"📊 {t('backend_status')}")
+    if is_json():
+        set_output("providers", results)
+        return flush_json(0)
+
+    print_msg(f"📊 {t('backend_status')}")
     for provider, info in results.items():
         icon = "✅" if info.get("active") else "❌"
-        print(f"  {icon} {provider.capitalize()}: {info['status']}")
+        print_msg(f"  {icon} {provider.capitalize()}: {info['status']}")
         if info.get("pane_id"):
-            print(f"     {info.get('terminal', 'tmux')}: {info['pane_id']}")
+            print_msg(f"     {info.get('terminal', 'tmux')}: {info['pane_id']}")
 
     return 0
 
 
 def cmd_kill(args):
     providers = args.providers or ["codex", "gemini"]
+    results = []
 
     for provider in providers:
         session_file = Path.cwd() / f".{provider}-session"
         if not session_file.exists():
-            print(f"⚠️ {provider}: Session file not found")
+            print_msg(f"⚠️ {provider}: Session file not found")
+            results.append({"provider": provider, "success": False, "error": "Session file not found"})
             continue
 
         try:
@@ -138,9 +145,15 @@ def cmd_kill(args):
             data["ended_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
             safe_write_session(session_file, json.dumps(data, ensure_ascii=False, indent=2))
 
-            print(f"✅ {provider.capitalize()} terminated")
+            print_msg(f"✅ {provider.capitalize()} terminated")
+            results.append({"provider": provider, "success": True})
         except Exception as e:
-            print(f"❌ {provider}: {e}")
+            print_error(f"❌ {provider}: {e}")
+            results.append({"provider": provider, "success": False, "error": str(e)})
+
+    if is_json():
+        set_output("results", results)
+        return flush_json(0)
 
     return 0
 
@@ -267,23 +280,35 @@ def cmd_version(args):
     local_info = get_version_info(install_dir)
     local_str = format_version_info(local_info)
 
-    print(f"ccb (Claude Code Bridge) {local_str}")
-    print(f"Install path: {install_dir}")
+    if is_json():
+        set_output("version", local_str)
+        set_output("install_path", str(install_dir))
+        set_output("local_info", local_info)
 
-    print("\nChecking for updates...")
+        print_msg("\nChecking for updates...")
+        remote_info = get_remote_version_info()
+        if remote_info:
+            set_output("remote_info", remote_info)
+            set_output("update_available", local_info.get("commit") != remote_info.get("commit"))
+        return flush_json(0)
+
+    print_msg(f"ccb (Claude Code Bridge) {local_str}")
+    print_msg(f"Install path: {install_dir}")
+
+    print_msg("\nChecking for updates...")
     remote_info = get_remote_version_info()
 
     if remote_info is None:
-        print("⚠️  Unable to check for updates (network error)")
+        print_msg("⚠️  Unable to check for updates (network error)")
     elif local_info.get("commit") and remote_info.get("commit"):
         if local_info["commit"] == remote_info["commit"]:
-            print(f"✅ Up to date")
+            print_msg(f"✅ Up to date")
         else:
             remote_str = f"{remote_info['commit']} {remote_info.get('date', '')}"
-            print(f"📦 Update available: {remote_str}")
-            print(f"   Run: ccb update")
+            print_msg(f"📦 Update available: {remote_str}")
+            print_msg(f"   Run: ccb update")
     else:
-        print("⚠️  Unable to compare versions")
+        print_msg("⚠️  Unable to compare versions")
 
     return 0
 
@@ -392,6 +417,10 @@ def cmd_completion(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Claude AI unified launcher", add_help=True)
+    # Global options
+    parser.add_argument("-q", "--quiet", action="store_true", help="Suppress non-essential output")
+    parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
     subparsers = parser.add_subparsers(dest="command", help="Subcommands")
 
     # up subcommand
@@ -440,8 +469,12 @@ def main():
         argv = ["version"]
     args = parser.parse_args(argv)
 
+    # Initialize output settings
+    init_output(quiet=args.quiet, json_output=args.json)
+
     if not args.command:
-        parser.print_help()
+        if not is_json():
+            parser.print_help()
         return 0
 
     if args.command == "up":
@@ -463,7 +496,8 @@ def main():
     elif args.command == "completion":
         return cmd_completion(args)
     else:
-        parser.print_help()
+        if not is_json():
+            parser.print_help()
         return 1
 
 
