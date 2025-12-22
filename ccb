@@ -43,6 +43,7 @@ from updater import (
 from constants import VERSION, VALID_PROVIDERS
 from launcher import AILauncher
 from doctor import run_diagnostics
+from init_wizard import run_init_wizard
 
 setup_windows_encoding()
 
@@ -345,6 +346,26 @@ def cmd_doctor(args):
     return 0 if failed == 0 else 1
 
 
+def cmd_init(args):
+    """Run interactive configuration wizard"""
+    from pathlib import Path
+    config_path = args.config if args.config else None
+    if config_path:
+        config_path = Path(config_path)
+
+    # Check for existing config
+    check_path = config_path or Path.cwd() / ".ccb-config.json"
+    if check_path.exists() and not args.force:
+        print(f"Configuration file already exists: {check_path}")
+        response = input("Overwrite existing configuration? [y/N]: ").strip().lower()
+        if response not in ("y", "yes"):
+            print("Use --force to overwrite, or specify a different path with --config")
+            return 1
+
+    config = run_init_wizard(config_path)
+    return 0 if config else 1
+
+
 def main():
     parser = argparse.ArgumentParser(description="Claude AI unified launcher", add_help=True)
     subparsers = parser.add_subparsers(dest="command", help="Subcommands")
@@ -378,6 +399,11 @@ def main():
     doctor_parser = subparsers.add_parser("doctor", help="Run system diagnostics")
     doctor_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
 
+    # init subcommand
+    init_parser = subparsers.add_parser("init", help="Interactive configuration wizard")
+    init_parser.add_argument("-c", "--config", type=str, help="Path to save configuration file")
+    init_parser.add_argument("-f", "--force", action="store_true", help="Overwrite existing configuration")
+
     argv = sys.argv[1:]
     # Backward/shortcut compatibility
     if argv and argv[0] in {"-r", "--resume", "--restore"}:
@@ -404,6 +430,8 @@ def main():
         return cmd_version(args)
     elif args.command == "doctor":
         return cmd_doctor(args)
+    elif args.command == "init":
+        return cmd_init(args)
     else:
         parser.print_help()
         return 1
