@@ -365,6 +365,37 @@ class GeminiLogReader:
                                 last_gemini_id = msg_id
                                 last_gemini_hash = content_hash
                     if last_gemini_content:
+                        # Gemini CLI writes messages incrementally: empty -> intermediate -> final.
+                        # Wait briefly to check if more content is coming before returning.
+                        # This "stability check" ensures we get the complete response.
+                        if block:
+                            time.sleep(self._poll_interval * 2)
+                            try:
+                                with session.open("r", encoding="utf-8") as f2:
+                                    data2 = json.load(f2)
+                                messages2 = data2.get("messages", [])
+                                if len(messages2) > current_count:
+                                    # More messages arrived, continue waiting
+                                    prev_count = current_count
+                                    prev_mtime = current_mtime
+                                    prev_mtime_ns = current_mtime_ns
+                                    prev_size = current_size
+                                    prev_last_gemini_id = last_gemini_id
+                                    prev_last_gemini_hash = last_gemini_hash
+                                    continue
+                                # Check if the last gemini message content changed (in-place update)
+                                last2 = self._extract_last_gemini(data2)
+                                if last2:
+                                    last2_id, last2_content = last2
+                                    if last2_content:
+                                        last2_hash = hashlib.sha256(last2_content.encode("utf-8")).hexdigest()
+                                        if last2_hash != last_gemini_hash:
+                                            # Content changed, use the newer content
+                                            last_gemini_content = last2_content
+                                            last_gemini_id = last2_id
+                                            last_gemini_hash = last2_hash
+                            except (OSError, json.JSONDecodeError):
+                                pass
                         new_state = {
                             "session_path": session,
                             "msg_count": current_count,
