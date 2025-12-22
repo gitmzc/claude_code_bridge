@@ -79,7 +79,9 @@ def main(argv: list[str]) -> int:
 
         # Pure sync wait with heartbeat (default 1 hour, configurable via CCB_SYNC_TIMEOUT)
         sync_timeout = float(os.environ.get("CCB_SYNC_TIMEOUT", "3600.0"))
-        heartbeat_interval = float(os.environ.get("CCB_HEARTBEAT_INTERVAL", "2.0"))
+        # Progressive heartbeat: starts at 2s, increases to 5s, then 10s
+        heartbeat_intervals = [2.0, 2.0, 2.0, 5.0, 5.0, 10.0]  # First 3 at 2s, next 2 at 5s, then 10s
+        heartbeat_idx = 0
 
         # Wait with periodic heartbeat to let Claude know we're still waiting
         # Use monotonic clock to avoid issues with system time changes
@@ -95,8 +97,11 @@ def main(argv: list[str]) -> int:
             if remaining <= 0:
                 break
 
+            # Get current heartbeat interval (progressive)
+            current_interval = heartbeat_intervals[min(heartbeat_idx, len(heartbeat_intervals) - 1)]
+
             # Ensure minimum wait time to avoid CPU spin
-            chunk_timeout = max(0.1, min(heartbeat_interval, remaining))
+            chunk_timeout = max(0.1, min(current_interval, remaining))
             message_reply, new_state = comm.log_reader.wait_for_message(state, chunk_timeout)
             state = new_state or state
             if message_reply:
@@ -104,9 +109,10 @@ def main(argv: list[str]) -> int:
 
             # Output heartbeat if interval passed
             now = time.monotonic()
-            if now - last_heartbeat >= heartbeat_interval:
+            if now - last_heartbeat >= current_interval:
                 print(f"⏳ Still waiting for Gemini... ({int(elapsed)}s elapsed)", flush=True)
                 last_heartbeat = now
+                heartbeat_idx += 1
 
         comm._remember_gemini_session(state.get("session_path") or comm.log_reader.current_session_path())
 
