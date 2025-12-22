@@ -82,30 +82,31 @@ def main(argv: list[str]) -> int:
         heartbeat_interval = float(os.environ.get("CCB_HEARTBEAT_INTERVAL", "30.0"))
 
         # Wait with periodic heartbeat to let Claude know we're still waiting
+        # Use monotonic clock to avoid issues with system time changes
         import time
-        start_time = time.time()
+        start_time = time.monotonic()
         message_reply = None
         last_heartbeat = start_time
 
         while True:
-            # Try to get message with short timeout
-            chunk_timeout = min(heartbeat_interval, sync_timeout - (time.time() - start_time))
-            if chunk_timeout <= 0:
+            # Calculate elapsed and remaining time at loop start
+            elapsed = time.monotonic() - start_time
+            remaining = sync_timeout - elapsed
+            if remaining <= 0:
                 break
+
+            # Ensure minimum wait time to avoid CPU spin
+            chunk_timeout = max(0.1, min(heartbeat_interval, remaining))
             message_reply, new_state = comm.log_reader.wait_for_message(state, chunk_timeout)
             state = new_state or state
             if message_reply:
                 break
 
             # Output heartbeat if interval passed
-            elapsed = time.time() - start_time
-            if time.time() - last_heartbeat >= heartbeat_interval:
+            now = time.monotonic()
+            if now - last_heartbeat >= heartbeat_interval:
                 print(f"⏳ Still waiting for Gemini... ({int(elapsed)}s elapsed)", flush=True)
-                last_heartbeat = time.time()
-
-            # Check total timeout
-            if elapsed >= sync_timeout:
-                break
+                last_heartbeat = now
 
         comm._remember_gemini_session(state.get("session_path") or comm.log_reader.current_session_path())
 
