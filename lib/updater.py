@@ -63,7 +63,7 @@ def get_remote_version_info() -> dict | None:
     import urllib.request
     import ssl
 
-    api_url = "https://api.github.com/repos/bfly123/claude_code_bridge/commits/main"
+    api_url = "https://api.github.com/repos/gitmzc/claude_code_bridge/commits/main"
     try:
         ctx = ssl.create_default_context()
         req = urllib.request.Request(api_url, headers={"User-Agent": "ccb"})
@@ -151,7 +151,7 @@ def pick_temp_base_dir(install_dir: Path) -> Path:
     )
 
 
-def update_from_tarball(install_dir: Path, repo_url: str = "https://github.com/bfly123/claude_code_bridge") -> tuple[bool, str]:
+def update_from_tarball(install_dir: Path, repo_url: str = "https://github.com/gitmzc/claude_code_bridge") -> tuple[bool, str]:
     """
     Update by downloading tarball.
     Returns (success, message).
