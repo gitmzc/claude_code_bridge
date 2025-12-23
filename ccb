@@ -49,6 +49,50 @@ from errors import ExitCode, format_error, print_error_and_exit
 
 setup_windows_encoding()
 
+
+def print_custom_help():
+    """Print custom formatted help with grouped commands."""
+    help_text = """ccb (Claude Code Bridge) - AI Backend Unified Launcher
+
+Usage: ccb [options] <command> [args]
+
+Session Commands:
+  up [providers]      Start AI backends (codex, gemini)
+                      -r, --resume    Resume previous context
+                      -a, --auto      Full auto permission mode
+                      --no-claude     Don't start Claude main window
+  status [providers]  Check backend status
+  kill [providers]    Terminate running sessions
+  restore [providers] Restore/attach to existing session
+
+System Commands:
+  init                Interactive configuration wizard
+                      -c, --config    Path to save config file
+                      -f, --force     Overwrite existing config
+  doctor              Run system diagnostics
+                      -v, --verbose   Verbose output
+  update              Update ccb to latest version
+  version             Show version and check for updates
+  completion [shell]  Output shell completion script (default: zsh)
+
+Global Options:
+  -q, --quiet         Suppress non-essential output
+  --json              Output in JSON format
+  --debug             Enable debug output for troubleshooting
+  -h, --help          Show this help message
+
+Examples:
+  ccb up codex              Start Codex backend
+  ccb up codex gemini       Start both backends
+  ccb up -r                 Resume with previous context
+  ccb status                Check all backend status
+  ccb kill codex            Terminate Codex session
+  ccb doctor                Run diagnostics
+
+For more information, visit: https://github.com/gitmzc/claude_code_bridge
+"""
+    print(help_text.strip())
+
 backend_env = get_backend_env()
 if backend_env and not os.environ.get("CCB_BACKEND_ENV"):
     os.environ["CCB_BACKEND_ENV"] = backend_env
@@ -417,8 +461,9 @@ def cmd_completion(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Claude AI unified launcher", add_help=True)
+    parser = argparse.ArgumentParser(description="Claude AI unified launcher", add_help=False)
     # Global options
+    parser.add_argument("-h", "--help", action="store_true", help="Show help message")
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress non-essential output")
     parser.add_argument("--json", action="store_true", help="Output in JSON format")
     parser.add_argument("--debug", action="store_true", help="Enable debug output for troubleshooting")
@@ -474,9 +519,14 @@ def main():
     # Initialize output settings
     init_output(quiet=args.quiet, json_output=args.json, debug=args.debug)
 
+    # Handle help flag
+    if args.help:
+        print_custom_help()
+        return 0
+
     if not args.command:
         if not is_json():
-            parser.print_help()
+            print_custom_help()
         return 0
 
     if args.command == "up":

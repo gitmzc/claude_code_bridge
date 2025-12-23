@@ -4,6 +4,7 @@ Version checking and update utilities for ccb.
 
 import json
 import os
+import platform
 import shutil
 import subprocess
 import tarfile
@@ -187,7 +188,11 @@ def update_from_tarball(install_dir: Path, repo_url: str = "https://github.com/g
                 member_path = (dest / member.name).resolve()
                 if not str(member_path).startswith(str(dest) + os.sep):
                     raise RuntimeError(f"Unsafe tar member path: {member.name}")
-            tar.extractall(dest)
+            # Python 3.14+ requires filter argument
+            try:
+                tar.extractall(dest, filter='data')
+            except TypeError:
+                tar.extractall(dest)
 
         with tarfile.open(tarball_path, "r:gz") as tar:
             _safe_extract(tar, tmp_dir)
@@ -196,7 +201,15 @@ def update_from_tarball(install_dir: Path, repo_url: str = "https://github.com/g
 
         env = os.environ.copy()
         env["CODEX_INSTALL_PREFIX"] = str(install_dir)
-        subprocess.run([str(extracted_dir / "install.sh"), "install"], check=True, env=env)
+        # Windows: use install.ps1, Unix: use install.sh
+        if platform.system() == "Windows":
+            ps1_script = extracted_dir / "install.ps1"
+            subprocess.run(
+                ["powershell", "-ExecutionPolicy", "Bypass", "-File", str(ps1_script), "install"],
+                check=True, env=env
+            )
+        else:
+            subprocess.run([str(extracted_dir / "install.sh"), "install"], check=True, env=env)
 
         return True, "Update successful"
 
