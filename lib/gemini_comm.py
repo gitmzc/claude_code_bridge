@@ -16,6 +16,7 @@ from typing import Optional, Tuple, Dict, Any
 from terminal import get_backend_for_session, get_pane_id_from_session
 from ccb_config import apply_backend_env
 from i18n import t
+from fs_watcher import FileWatcher
 import notify
 
 
@@ -57,6 +58,7 @@ class GeminiLogReader:
         except Exception:
             force = 1.0
         self._force_read_interval = min(5.0, max(0.2, force))
+        self._watcher = FileWatcher()
 
     def _chats_dir(self) -> Optional[Path]:
         chats = self.root / self._project_hash / "chats"
@@ -252,7 +254,14 @@ class GeminiLogReader:
                         "last_gemini_id": prev_last_gemini_id,
                         "last_gemini_hash": prev_last_gemini_hash,
                     }
-                time.sleep(self._poll_interval)
+                # Use watcher to wait for session file creation if we have a directory
+                if chats_dir and chats_dir.exists():
+                    self._watcher.wait_for_change(chats_dir, timeout=self._poll_interval)
+                elif self.root.exists():
+                    self._watcher.wait_for_change(self.root, timeout=self._poll_interval)
+                else:
+                    time.sleep(self._poll_interval)
+                
                 if time.time() >= deadline:
                     return None, state
                 continue
@@ -266,19 +275,21 @@ class GeminiLogReader:
                 # Use file size as additional change signal.
                 if block and current_mtime_ns <= prev_mtime_ns and current_size == prev_size:
                     if time.time() - last_forced_read < self._force_read_interval:
-                        time.sleep(self._poll_interval)
-                        if time.time() >= deadline:
-                            return None, {
-                                "session_path": session,
-                                "msg_count": prev_count,
-                                "mtime": prev_mtime,
-                                "mtime_ns": prev_mtime_ns,
-                                "size": prev_size,
-                                "last_gemini_id": prev_last_gemini_id,
-                                "last_gemini_hash": prev_last_gemini_hash,
-                            }
-                        continue
-                    # fallthrough: forced read
+                        # Wait for file change event instead of sleeping
+                        if not self._watcher.wait_for_change(session, timeout=self._poll_interval):
+                             # Timeout (no change), check if deadline exceeded
+                             if time.time() >= deadline:
+                                return None, {
+                                    "session_path": session,
+                                    "msg_count": prev_count,
+                                    "mtime": prev_mtime,
+                                    "mtime_ns": prev_mtime_ns,
+                                    "size": prev_size,
+                                    "last_gemini_id": prev_last_gemini_id,
+                                    "last_gemini_hash": prev_last_gemini_hash,
+                                }
+                             continue
+                    # fallthrough: forced read or event detected
 
                 with session.open("r", encoding="utf-8") as f:
                     data = json.load(f)
@@ -306,6 +317,10 @@ class GeminiLogReader:
                         and (current_mtime_ns > prev_mtime_ns or current_size != prev_size)
                     ):
                         msg_id = last_msg.get("id") if isinstance(last_msg, dict) else None
+                        # Check for fast-exit marker
+                        if "[CCB_REPLY_END]" in last_content:
+                            last_content = last_content.replace("[CCB_REPLY_END]", "").replace("[GEMINI_TURN_END]", "").rstrip()
+                        
                         content_hash = hashlib.sha256(last_content.encode("utf-8")).hexdigest()
                         return last_content, {
                             "session_path": session,
@@ -336,7 +351,7 @@ class GeminiLogReader:
                             "last_gemini_id": prev_last_gemini_id,
                             "last_gemini_hash": prev_last_gemini_hash,
                         }
-                    time.sleep(self._poll_interval)
+                    self._watcher.wait_for_change(session, timeout=self._poll_interval)
                     if time.time() >= deadline:
                         return None, {
                             "session_path": session,
@@ -356,6 +371,8 @@ class GeminiLogReader:
                     last_gemini_id = None
                     last_gemini_hash = None
                     seen_hashes = set()
+                    fast_exit_triggered = False
+
                     if prev_last_gemini_hash:
                         seen_hashes.add(prev_last_gemini_hash)
                     for msg in messages[prev_count:]:
@@ -370,16 +387,56 @@ class GeminiLogReader:
                                 gemini_contents.append(content)
                                 last_gemini_id = msg.get("id")
                                 last_gemini_hash = content_hash
+                                if "[CCB_REPLY_END]" in content:
+                                    fast_exit_triggered = True
+
+                    if not gemini_contents:
+                        # New messages arrived but no gemini reply yet (only user message)
+                        # Update prev_count and continue waiting
+                        prev_count = current_count
+                        prev_mtime = current_mtime
+                        prev_mtime_ns = current_mtime_ns
+                        prev_size = current_size
+                        # Don't update prev_last_gemini_* since we haven't seen a new gemini message
+                        if not block:
+                            return None, {
+                                "session_path": session,
+                                "msg_count": prev_count,
+                                "mtime": prev_mtime,
+                                "mtime_ns": prev_mtime_ns,
+                                "size": prev_size,
+                                "last_gemini_id": prev_last_gemini_id,
+                                "last_gemini_hash": prev_last_gemini_hash,
+                            }
+                        self._watcher.wait_for_change(session, timeout=self._poll_interval)
+                        if time.time() >= deadline:
+                            return None, {
+                                "session_path": session,
+                                "msg_count": prev_count,
+                                "mtime": prev_mtime,
+                                "mtime_ns": prev_mtime_ns,
+                                "size": prev_size,
+                                "last_gemini_id": prev_last_gemini_id,
+                                "last_gemini_hash": prev_last_gemini_hash,
+                            }
+                        continue
+
                     if gemini_contents:
                         # Gemini CLI writes messages incrementally: empty -> intermediate -> final.
                         # It may also write multiple messages in sequence.
-                        # Use a stability loop to ensure we get the complete response.
-                        if block:
-                            # Stability check: wait until no new messages/content for stability_wait seconds
-                            stability_wait = max(0.5, self._poll_interval * 10)
-                            max_stability_checks = 10
-                            for _ in range(max_stability_checks):
-                                time.sleep(stability_wait)
+                        #
+                        # Strategy: Wait for [CCB_REPLY_END] marker to confirm completion.
+                        # Only fall back to stability check if marker is not received within timeout.
+                        if block and not fast_exit_triggered:
+                            # Wait for [CCB_REPLY_END] marker - this is the authoritative signal
+                            # that Gemini has finished its response (including any tool executions)
+                            marker_timeout = 600.0  # 10 minutes max wait for marker
+                            marker_check_interval = 2.0  # Check every 2 seconds
+                            marker_deadline = time.time() + marker_timeout
+
+                            while time.time() < marker_deadline and not fast_exit_triggered:
+                                # Wait for file change or timeout
+                                self._watcher.wait_for_change(session, timeout=marker_check_interval)
                                 try:
                                     with session.open("r", encoding="utf-8") as f2:
                                         data2 = json.load(f2)
@@ -403,12 +460,26 @@ class GeminiLogReader:
                                                     gemini_contents.append(content)
                                                     last_gemini_id = msg.get("id")
                                                     last_gemini_hash = content_hash
-                                        continue  # Keep checking for more messages
+                                                    if "[CCB_REPLY_END]" in content:
+                                                        fast_exit_triggered = True
+                                        if fast_exit_triggered:
+                                            break
+                                        # Keep waiting for more messages or [CCB_REPLY_END] marker
+                                        continue
                                     # Check if the last gemini message content changed (in-place update)
                                     last2 = self._extract_last_gemini(data2)
                                     if last2:
                                         last2_id, last2_content = last2
                                         if last2_content:
+                                            if "[CCB_REPLY_END]" in last2_content:
+                                                fast_exit_triggered = True
+                                                # Update gemini_contents with final content
+                                                if gemini_contents and last_gemini_hash:
+                                                    gemini_contents[-1] = last2_content
+                                                last_gemini_id = last2_id
+                                                last_gemini_hash = hashlib.sha256(last2_content.encode("utf-8")).hexdigest()
+                                                break
+
                                             last2_hash = hashlib.sha256(last2_content.encode("utf-8")).hexdigest()
                                             if last2_hash != last_gemini_hash:
                                                 # Content changed, update the last item in gemini_contents
@@ -417,13 +488,23 @@ class GeminiLogReader:
                                                     gemini_contents[-1] = last2_content
                                                 last_gemini_id = last2_id
                                                 last_gemini_hash = last2_hash
-                                                continue  # Keep checking for more updates
-                                    # No changes detected, content is stable
-                                    break
+                                                # Keep waiting for [CCB_REPLY_END] marker
+                                                continue
+                                    # No changes detected, but keep waiting for [CCB_REPLY_END] marker
+                                    # Don't break here - continue waiting until marker or timeout
+                                    continue
                                 except (OSError, json.JSONDecodeError):
                                     break
+                        
+                        # Clean up marker
+                        cleaned_contents = []
+                        for c in gemini_contents:
+                            if "[CCB_REPLY_END]" in c:
+                                c = c.replace("[CCB_REPLY_END]", "").replace("[GEMINI_TURN_END]", "").rstrip()
+                            cleaned_contents.append(c)
+                            
                         # Merge all gemini contents with double newline separator
-                        merged_content = "\n\n".join(gemini_contents)
+                        merged_content = "\n\n".join(cleaned_contents)
                         new_state = {
                             "session_path": session,
                             "msg_count": current_count,
@@ -434,24 +515,6 @@ class GeminiLogReader:
                             "last_gemini_hash": last_gemini_hash,
                         }
                         return merged_content, new_state
-                else:
-                    # Some versions write empty gemini message first, then update content in-place.
-                    last = self._extract_last_gemini(data)
-                    if last:
-                        last_id, content = last
-                        if content:
-                            current_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
-                            if last_id != prev_last_gemini_id or current_hash != prev_last_gemini_hash:
-                                new_state = {
-                                    "session_path": session,
-                                    "msg_count": current_count,
-                                    "mtime": current_mtime,
-                                    "mtime_ns": current_mtime_ns,
-                                    "size": current_size,
-                                    "last_gemini_id": last_id,
-                                    "last_gemini_hash": current_hash,
-                                }
-                                return content, new_state
 
                 prev_mtime = current_mtime
                 prev_mtime_ns = current_mtime_ns
@@ -476,7 +539,9 @@ class GeminiLogReader:
                     "last_gemini_hash": prev_last_gemini_hash,
                 }
 
-            time.sleep(self._poll_interval)
+            # Use watcher for waiting
+            self._watcher.wait_for_change(session, timeout=self._poll_interval)
+            
             if time.time() >= deadline:
                 return None, {
                     "session_path": session,

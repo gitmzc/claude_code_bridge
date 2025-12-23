@@ -19,6 +19,7 @@ from typing import Optional, Tuple, Dict, Any
 from terminal import get_backend_for_session, get_pane_id_from_session
 from ccb_config import apply_backend_env
 from i18n import t
+from fs_watcher import FileWatcher
 import notify
 
 
@@ -43,6 +44,7 @@ class CodexLogReader:
         except Exception:
             poll = 0.05
         self._poll_interval = min(0.5, max(0.01, poll))
+        self._watcher = FileWatcher()
 
     def set_preferred_log(self, log_path: Optional[Path]) -> None:
         self._preferred_log = self._normalize_path(log_path)
@@ -167,6 +169,12 @@ class CodexLogReader:
         rescan_interval = min(2.0, max(0.2, timeout / 2.0))
         last_rescan = time.time()
 
+        # Collect messages until we see [CCB_REPLY_END] marker
+        collected_messages: list[str] = []
+        fast_exit_triggered = False
+        # Max wait for marker: 10 minutes
+        marker_deadline = time.time() + 600.0
+
         def ensure_log() -> Path:
             candidates = [
                 self._preferred_log if self._preferred_log and self._preferred_log.exists() else None,
@@ -187,7 +195,11 @@ class CodexLogReader:
             except FileNotFoundError:
                 if not block:
                     return None, {"log_path": None, "offset": 0}
-                time.sleep(self._poll_interval)
+                # Wait for log directory to have new files
+                if self.root.exists():
+                    self._watcher.wait_for_change(self.root, timeout=self._poll_interval)
+                else:
+                    time.sleep(self._poll_interval)
                 continue
 
             try:
@@ -209,10 +221,14 @@ class CodexLogReader:
                     offset = size if isinstance(size, int) else 0
                     if not block:
                         return None, {"log_path": log_path, "offset": offset}
-                    time.sleep(self._poll_interval)
+                    self._watcher.wait_for_change(log_path, timeout=self._poll_interval)
                     continue
                 while True:
-                    if block and time.time() >= deadline:
+                    if block and time.time() >= marker_deadline:
+                        # Timeout waiting for marker, return collected messages if any
+                        if collected_messages:
+                            merged = "\n\n".join(m for m in collected_messages if m)
+                            return merged, {"log_path": log_path, "offset": offset}
                         return None, {"log_path": log_path, "offset": offset}
                     pos_before = fh.tell()
                     raw_line = fh.readline()
@@ -232,7 +248,18 @@ class CodexLogReader:
                         continue
                     message = self._extract_message(entry)
                     if message is not None:
-                        return message, {"log_path": log_path, "offset": offset}
+                        # Check for fast-exit marker
+                        if "[CCB_REPLY_END]" in message:
+                            message = message.replace("[CCB_REPLY_END]", "").rstrip()
+                            collected_messages.append(message)
+                            fast_exit_triggered = True
+                            # Return all collected messages merged
+                            merged = "\n\n".join(m for m in collected_messages if m)
+                            return merged, {"log_path": log_path, "offset": offset}
+                        else:
+                            # No marker yet, collect message and continue waiting
+                            collected_messages.append(message)
+                            # Don't return yet - keep waiting for [CCB_REPLY_END]
 
             if time.time() - last_rescan >= rescan_interval:
                 latest = self._scan_latest()
@@ -245,16 +272,27 @@ class CodexLogReader:
                     offset = 0
                     if not block:
                         return None, {"log_path": current_path, "offset": offset}
-                    time.sleep(self._poll_interval)
+                    self._watcher.wait_for_change(current_path, timeout=self._poll_interval)
                     last_rescan = time.time()
                     continue
                 last_rescan = time.time()
 
             if not block:
+                # Non-blocking mode: return collected messages if any, otherwise None
+                if collected_messages:
+                    merged = "\n\n".join(m for m in collected_messages if m)
+                    return merged, {"log_path": log_path, "offset": offset}
                 return None, {"log_path": log_path, "offset": offset}
 
-            time.sleep(self._poll_interval)
-            if time.time() >= deadline:
+            # Wait for file change event instead of sleeping
+            self._watcher.wait_for_change(log_path, timeout=self._poll_interval)
+
+            # Check marker deadline (10 minutes) instead of original deadline
+            if time.time() >= marker_deadline:
+                # Timeout waiting for marker, return collected messages if any
+                if collected_messages:
+                    merged = "\n\n".join(m for m in collected_messages if m)
+                    return merged, {"log_path": log_path, "offset": offset}
                 return None, {"log_path": log_path, "offset": offset}
 
     @staticmethod
