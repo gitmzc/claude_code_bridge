@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import time
 import shlex
 from datetime import datetime
@@ -18,6 +19,9 @@ from typing import Optional, Tuple, Dict, Any
 from terminal import get_backend_for_session, get_pane_id_from_session
 from ccb_config import apply_backend_env
 from i18n import t
+from fs_watcher import FileWatcher
+import notify
+
 
 apply_backend_env()
 
@@ -40,6 +44,7 @@ class CodexLogReader:
         except Exception:
             poll = 0.05
         self._poll_interval = min(0.5, max(0.01, poll))
+        self._watcher = FileWatcher()
 
     def set_preferred_log(self, log_path: Optional[Path]) -> None:
         self._preferred_log = self._normalize_path(log_path)
@@ -63,8 +68,6 @@ class CodexLogReader:
             latest_mtime = -1.0
             for p in (p for p in self.root.glob("**/*.jsonl") if p.is_file()):
                 try:
-                    if self._session_id_filter and self._session_id_filter not in p.name:
-                        continue
                     mtime = p.stat().st_mtime
                 except OSError:
                     continue
@@ -78,12 +81,22 @@ class CodexLogReader:
 
     def _latest_log(self) -> Optional[Path]:
         preferred = self._preferred_log
-        if preferred and preferred.exists():
-            return preferred
+        # Always scan for latest to detect if preferred is stale
         latest = self._scan_latest()
         if latest:
-            self._preferred_log = latest
-        return latest
+            # If preferred is stale (different file or older), update it
+            if not preferred or not preferred.exists() or latest != preferred:
+                try:
+                    preferred_mtime = preferred.stat().st_mtime if preferred and preferred.exists() else 0
+                    latest_mtime = latest.stat().st_mtime
+                    if latest_mtime > preferred_mtime:
+                        self._preferred_log = latest
+                        return latest
+                except OSError:
+                    self._preferred_log = latest
+                    return latest
+            return preferred if preferred and preferred.exists() else latest
+        return preferred if preferred and preferred.exists() else None
 
     def current_log_path(self) -> Optional[Path]:
         return self._latest_log()
@@ -91,12 +104,17 @@ class CodexLogReader:
     def capture_state(self) -> Dict[str, Any]:
         """Capture current log path and offset"""
         log = self._latest_log()
-        offset = 0
+        offset = -1
         if log and log.exists():
             try:
                 offset = log.stat().st_size
             except OSError:
-                offset = 0
+                try:
+                    with log.open("rb") as handle:
+                        handle.seek(0, os.SEEK_END)
+                        offset = handle.tell()
+                except OSError:
+                    offset = -1
         return {"log_path": log, "offset": offset}
 
     def wait_for_message(self, state: Dict[str, Any], timeout: float) -> Tuple[Optional[str], Dict[str, Any]]:
@@ -144,10 +162,19 @@ class CodexLogReader:
     def _read_since(self, state: Dict[str, Any], timeout: float, block: bool) -> Tuple[Optional[str], Dict[str, Any]]:
         deadline = time.time() + timeout
         current_path = self._normalize_path(state.get("log_path"))
-        offset = state.get("offset", 0)
+        offset = state.get("offset", -1)
+        if not isinstance(offset, int):
+            offset = -1
         # Keep rescans infrequent; new messages usually append to the same log file.
         rescan_interval = min(2.0, max(0.2, timeout / 2.0))
         last_rescan = time.time()
+
+        # Collect messages until we see [CCB_REPLY_END] marker
+        collected_messages: list[str] = []
+        fast_exit_triggered = False
+        # Use the larger of user timeout and 10 minutes as max wait for marker
+        # This ensures user's timeout is respected while allowing long tasks
+        marker_deadline = time.time() + max(timeout, 600.0) if timeout > 0 else time.time() + 600.0
 
         def ensure_log() -> Path:
             candidates = [
@@ -169,19 +196,51 @@ class CodexLogReader:
             except FileNotFoundError:
                 if not block:
                     return None, {"log_path": None, "offset": 0}
-                time.sleep(self._poll_interval)
+                # Wait for log directory to have new files
+                if self.root.exists():
+                    self._watcher.wait_for_change(self.root, timeout=self._poll_interval)
+                else:
+                    time.sleep(self._poll_interval)
                 continue
 
-            with log_path.open("r", encoding="utf-8", errors="ignore") as fh:
-                fh.seek(offset)
-                while True:
-                    if block and time.time() >= deadline:
+            try:
+                size = log_path.stat().st_size
+            except OSError:
+                size = None
+
+            # If caller couldn't capture a baseline, establish it now (start from EOF).
+            if offset < 0:
+                offset = size if isinstance(size, int) else 0
+
+            with log_path.open("rb") as fh:
+                try:
+                    if isinstance(size, int) and offset > size:
+                        offset = size
+                    fh.seek(offset, os.SEEK_SET)
+                except OSError:
+                    # If seek fails, reset to EOF and try again on next loop.
+                    offset = size if isinstance(size, int) else 0
+                    if not block:
                         return None, {"log_path": log_path, "offset": offset}
-                    line = fh.readline()
-                    if not line:
+                    self._watcher.wait_for_change(log_path, timeout=self._poll_interval)
+                    continue
+                while True:
+                    if block and time.time() >= marker_deadline:
+                        # Timeout waiting for marker, return collected messages if any
+                        if collected_messages:
+                            merged = "\n\n".join(m for m in collected_messages if m)
+                            return merged, {"log_path": log_path, "offset": offset}
+                        return None, {"log_path": log_path, "offset": offset}
+                    pos_before = fh.tell()
+                    raw_line = fh.readline()
+                    if not raw_line:
+                        break
+                    # If we hit EOF without a newline, the writer may still be appending this line.
+                    if not raw_line.endswith(b"\n"):
+                        fh.seek(pos_before)
                         break
                     offset = fh.tell()
-                    line = line.strip()
+                    line = raw_line.decode("utf-8", errors="ignore").strip()
                     if not line:
                         continue
                     try:
@@ -190,29 +249,51 @@ class CodexLogReader:
                         continue
                     message = self._extract_message(entry)
                     if message is not None:
-                        return message, {"log_path": log_path, "offset": offset}
+                        # Check for fast-exit marker
+                        if "[CCB_REPLY_END]" in message:
+                            message = message.replace("[CCB_REPLY_END]", "").rstrip()
+                            collected_messages.append(message)
+                            fast_exit_triggered = True
+                            # Return all collected messages merged
+                            merged = "\n\n".join(m for m in collected_messages if m)
+                            return merged, {"log_path": log_path, "offset": offset}
+                        else:
+                            # No marker yet, collect message and continue waiting
+                            collected_messages.append(message)
+                            # Don't return yet - keep waiting for [CCB_REPLY_END]
 
             if time.time() - last_rescan >= rescan_interval:
                 latest = self._scan_latest()
                 if latest and latest != log_path:
                     current_path = latest
                     self._preferred_log = latest
-                    try:
-                        offset = latest.stat().st_size
-                    except OSError:
-                        offset = 0
+                    # When switching to a new log file (session rotation / new session),
+                    # start from the beginning to avoid missing a reply that was already written
+                    # before we noticed the new file.
+                    offset = 0
                     if not block:
                         return None, {"log_path": current_path, "offset": offset}
-                    time.sleep(self._poll_interval)
+                    self._watcher.wait_for_change(current_path, timeout=self._poll_interval)
                     last_rescan = time.time()
                     continue
                 last_rescan = time.time()
 
             if not block:
+                # Non-blocking mode: return collected messages if any, otherwise None
+                if collected_messages:
+                    merged = "\n\n".join(m for m in collected_messages if m)
+                    return merged, {"log_path": log_path, "offset": offset}
                 return None, {"log_path": log_path, "offset": offset}
 
-            time.sleep(self._poll_interval)
-            if time.time() >= deadline:
+            # Wait for file change event instead of sleeping
+            self._watcher.wait_for_change(log_path, timeout=self._poll_interval)
+
+            # Check marker deadline (10 minutes) instead of original deadline
+            if time.time() >= marker_deadline:
+                # Timeout waiting for marker, return collected messages if any
+                if collected_messages:
+                    merged = "\n\n".join(m for m in collected_messages if m)
+                    return merged, {"log_path": log_path, "offset": offset}
                 return None, {"log_path": log_path, "offset": offset}
 
     @staticmethod
@@ -307,7 +388,7 @@ class CodexCommunicator:
             return None
 
         try:
-            with open(project_session, "r", encoding="utf-8") as f:
+            with open(project_session, "r", encoding="utf-8-sig") as f:
                 data = json.load(f)
 
             if not isinstance(data, dict):
@@ -434,6 +515,7 @@ class CodexCommunicator:
 
             print(f"🔔 {t('sending_to', provider='Codex')}", flush=True)
             marker, state = self._send_message(question)
+            notify.notify_waiting("Codex")
             wait_timeout = self.timeout if timeout is None else int(timeout)
             if wait_timeout == 0:
                 print(f"⏳ {t('waiting_for_reply', provider='Codex')}", flush=True)
@@ -447,6 +529,7 @@ class CodexCommunicator:
                         log_hint = self.log_reader.current_log_path()
                     self._remember_codex_session(log_hint)
                     if message:
+                        notify.notify_reply_received("Codex", message)
                         print(f"🤖 {t('reply_from', provider='Codex')}")
                         print(message)
                         return message
@@ -462,6 +545,7 @@ class CodexCommunicator:
                 log_hint = self.log_reader.current_log_path()
             self._remember_codex_session(log_hint)
             if message:
+                notify.notify_reply_received("Codex", message)
                 print(f"🤖 {t('reply_from', provider='Codex')}")
                 print(message)
                 return message
@@ -530,7 +614,7 @@ class CodexCommunicator:
         if not project_file.exists():
             return
         try:
-            with project_file.open("r", encoding="utf-8") as handle:
+            with project_file.open("r", encoding="utf-8-sig") as handle:
                 data = json.load(handle)
         except Exception:
             return
@@ -652,7 +736,8 @@ def main() -> int:
                 print("❌ Please provide a question")
                 return 1
             if args.wait:
-                comm.ask_sync(question_text, args.timeout)
+                if comm.ask_sync(question_text, args.timeout) is None:
+                    return 1
             else:
                 comm.ask_async(question_text)
         else:

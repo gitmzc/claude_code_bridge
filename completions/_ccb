@@ -1,0 +1,89 @@
+#compdef ccb
+
+# ccb (Claude Code Bridge) zsh completion script
+# Install: copy to a directory in your $fpath, or source directly
+
+_ccb_providers() {
+    local providers=(
+        'codex:OpenAI Codex CLI'
+        'gemini:Google Gemini CLI'
+    )
+    _describe -t providers 'provider' providers
+}
+
+_ccb_shells() {
+    local shells=(
+        'zsh:Z shell completion'
+    )
+    _describe -t shells 'shell' shells
+}
+
+_ccb() {
+    local -a commands
+    commands=(
+        'up:Start AI backends'
+        'status:Check backend status'
+        'kill:Terminate session'
+        'restore:Restore/attach session'
+        'update:Update to latest version'
+        'version:Show version and check for updates'
+        'doctor:Run system diagnostics'
+        'init:Interactive configuration wizard'
+        'completion:Output shell completion script'
+    )
+
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
+
+    _arguments -C \
+        '-v[Show version]' \
+        '--version[Show version]' \
+        '-r[Resume context (shortcut for up -r)]' \
+        '--resume[Resume context (shortcut for up -r)]' \
+        '--restore[Resume context (shortcut for up -r)]' \
+        '1: :->command' \
+        '*: :->args'
+
+    case $state in
+        command)
+            _describe -t commands 'ccb command' commands
+            ;;
+        args)
+            case $line[1] in
+                up)
+                    _arguments \
+                        '-r[Resume context]' \
+                        '--resume[Resume context]' \
+                        '--restore[Resume context]' \
+                        '-a[Full auto permission mode]' \
+                        '--auto[Full auto permission mode]' \
+                        '--no-claude[Do not start Claude main window]' \
+                        '*:provider:_ccb_providers'
+                    ;;
+                status|kill|restore)
+                    _arguments '*:provider:_ccb_providers'
+                    ;;
+                doctor)
+                    _arguments \
+                        '-v[Verbose output]' \
+                        '--verbose[Verbose output]'
+                    ;;
+                init)
+                    _arguments \
+                        '-c[Path to save configuration file]:config file:_files' \
+                        '--config[Path to save configuration file]:config file:_files' \
+                        '-f[Overwrite existing configuration]' \
+                        '--force[Overwrite existing configuration]'
+                    ;;
+                completion)
+                    _arguments '1:shell:_ccb_shells'
+                    ;;
+                update|version)
+                    # No additional arguments
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_ccb "$@"

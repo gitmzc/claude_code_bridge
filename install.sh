@@ -524,6 +524,37 @@ copy_project() {
   mkdir -p "$(dirname "$INSTALL_PREFIX")"
   mv "$staging" "$INSTALL_PREFIX"
   trap - EXIT
+
+  # Update GIT_COMMIT and GIT_DATE in ccb file
+  local git_commit="" git_date=""
+
+  # Method 1: From git repo
+  if command -v git >/dev/null 2>&1 && [[ -d "$REPO_ROOT/.git" ]]; then
+    git_commit=$(git -C "$REPO_ROOT" log -1 --format='%h' 2>/dev/null || echo "")
+    git_date=$(git -C "$REPO_ROOT" log -1 --format='%cs' 2>/dev/null || echo "")
+  fi
+
+  # Method 2: From environment variables (set by ccb update)
+  if [[ -z "$git_commit" && -n "${CCB_GIT_COMMIT:-}" ]]; then
+    git_commit="$CCB_GIT_COMMIT"
+    git_date="${CCB_GIT_DATE:-}"
+  fi
+
+  # Method 3: From GitHub API (fallback)
+  if [[ -z "$git_commit" ]] && command -v curl >/dev/null 2>&1; then
+    local api_response
+    api_response=$(curl -fsSL "https://api.github.com/repos/bfly123/claude_code_bridge/commits/main" 2>/dev/null || echo "")
+    if [[ -n "$api_response" ]]; then
+      git_commit=$(echo "$api_response" | grep -o '"sha": "[^"]*"' | head -1 | cut -d'"' -f4 | cut -c1-7)
+      git_date=$(echo "$api_response" | grep -o '"date": "[^"]*"' | head -1 | cut -d'"' -f4 | cut -c1-10)
+    fi
+  fi
+
+  if [[ -n "$git_commit" && -f "$INSTALL_PREFIX/ccb" ]]; then
+    sed -i.bak "s/^GIT_COMMIT = .*/GIT_COMMIT = \"$git_commit\"/" "$INSTALL_PREFIX/ccb"
+    sed -i.bak "s/^GIT_DATE = .*/GIT_DATE = \"$git_date\"/" "$INSTALL_PREFIX/ccb"
+    rm -f "$INSTALL_PREFIX/ccb.bak"
+  fi
 }
 
 install_bin_links() {
@@ -630,15 +661,18 @@ install_claude_md_config() {
   local claude_md="$HOME/.claude/CLAUDE.md"
   mkdir -p "$HOME/.claude"
 
-  local ccb_content
-  ccb_content=$(cat << 'AI_RULES'
+  # Use temp file to avoid Bash 3.2 heredoc parsing bug with single quotes
+  local ccb_tmpfile=""
+  ccb_tmpfile="$(mktemp)" || { echo "Failed to create temp file"; return 1; }
+  trap 'rm -f "${ccb_tmpfile:-}"' RETURN
+  cat > "$ccb_tmpfile" << 'AI_RULES'
 <!-- CCB_CONFIG_START -->
 ## Codex Collaboration Rules
 Codex is another AI assistant running in a separate terminal session (WezTerm, iTerm2 or tmux). When user intent involves asking/consulting/collaborating with Codex:
 
 Fast path (minimize latency):
 - If the user message starts with any of: `@codex`, `codex:`, `ask codex`, `let codex`, `/cask-w` then immediately run:
-  - `Bash(cask-w "<message>", run_in_background=true)` (background send, continue immediately)
+  - `Bash(cask-w "<message>", run_in_background=true)` then STOP and wait for bash-notification
 - If user message is only the prefix (no content), ask a 1-line clarification for what to send.
 
 Trigger conditions (any match):
@@ -648,27 +682,25 @@ Trigger conditions (any match):
 
 Command selection:
 - Default ask/collaborate -> `Bash(cask-w "<question>", run_in_background=true)`
-  - Sends in background, returns task_id immediately
-  - Continue with other work, do not wait
-  - Use `TaskOutput(task_id, block=true)` when result is needed
-- Send without waiting -> `cask "<question>"` (async, returns immediately)
+  - When bash-notification arrives (task completed), immediately cat the output file to show result
+  - Do NOT continue with other work until result is shown
+- Send without waiting -> `cask "<question>"` (fire and forget)
 - Check connectivity -> `cping`
 - View previous reply -> `cpend`
-- Get background result -> `TaskOutput(task_id="xxx", block=true)`
 
 Examples:
-- "what does codex think" -> Bash(cask-w, run_in_background=true), then continue
-- "ask codex to review this" -> Bash(cask-w, run_in_background=true), then continue
+- "what does codex think" -> `Bash(cask-w "...", run_in_background=true)`, wait for notification, cat output
+- "ask codex to review this" -> `Bash(cask-w "...", run_in_background=true)`, wait for notification, cat output
 - "is codex alive" -> cping
-- "do not wait for reply" -> cask
-- "get codex result" -> TaskOutput(task_id) or cpend
+- "don't wait for reply" -> cask
+- "view codex reply" -> cpend
 
 ## Gemini Collaboration Rules
 Gemini is another AI assistant running in a separate terminal session (WezTerm, iTerm2 or tmux). When user intent involves asking/consulting/collaborating with Gemini:
 
 Fast path (minimize latency):
 - If the user message starts with any of: `@gemini`, `gemini:`, `ask gemini`, `let gemini`, `/gask-w` then immediately run:
-  - `Bash(gask-w "<message>", run_in_background=true)` (background send, continue immediately)
+  - `Bash(gask-w "<message>", run_in_background=true)` then STOP and wait for bash-notification
 - If user message is only the prefix (no content), ask a 1-line clarification for what to send.
 
 Trigger conditions (any match):
@@ -678,23 +710,22 @@ Trigger conditions (any match):
 
 Command selection:
 - Default ask/collaborate -> `Bash(gask-w "<question>", run_in_background=true)`
-  - Sends in background, returns task_id immediately
-  - Continue with other work, do not wait
-  - Use `TaskOutput(task_id, block=true)` when result is needed
-- Send without waiting -> `gask "<question>"` (async, returns immediately)
+  - When bash-notification arrives (task completed), immediately cat the output file to show result
+  - Do NOT continue with other work until result is shown
+- Send without waiting -> `gask "<question>"` (fire and forget)
 - Check connectivity -> `gping`
 - View previous reply -> `gpend`
-- Get background result -> `TaskOutput(task_id="xxx", block=true)`
 
 Examples:
-- "what does gemini think" -> Bash(gask-w, run_in_background=true), then continue
-- "ask gemini to review this" -> Bash(gask-w, run_in_background=true), then continue
+- "what does gemini think" -> `Bash(gask-w "...", run_in_background=true)`, wait for notification, cat output
+- "ask gemini to review this" -> `Bash(gask-w "...", run_in_background=true)`, wait for notification, cat output
 - "is gemini alive" -> gping
-- "do not wait for reply" -> gask
-- "get gemini result" -> TaskOutput(task_id) or gpend
+- "don't wait for reply" -> gask
+- "view gemini reply" -> gpend
 <!-- CCB_CONFIG_END -->
 AI_RULES
-)
+  local ccb_content
+  ccb_content="$(cat "$ccb_tmpfile")"
 
   if [[ -f "$claude_md" ]]; then
     if grep -q "$CCB_START_MARKER" "$claude_md" 2>/dev/null; then
