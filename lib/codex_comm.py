@@ -172,8 +172,9 @@ class CodexLogReader:
         # Collect messages until we see [CCB_REPLY_END] marker
         collected_messages: list[str] = []
         fast_exit_triggered = False
-        # Max wait for marker: 10 minutes
-        marker_deadline = time.time() + 600.0
+        # Use the larger of user timeout and 10 minutes as max wait for marker
+        # This ensures user's timeout is respected while allowing long tasks
+        marker_deadline = time.time() + max(timeout, 600.0) if timeout > 0 else time.time() + 600.0
 
         def ensure_log() -> Path:
             candidates = [

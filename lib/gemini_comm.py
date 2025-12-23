@@ -431,7 +431,9 @@ class GeminiLogReader:
                         if block and not fast_exit_triggered:
                             # Wait for [CCB_REPLY_END] marker - this is the authoritative signal
                             # that Gemini has finished its response (including any tool executions)
-                            marker_timeout = 600.0  # 10 minutes max wait for marker
+                            # Use the larger of remaining time and 10 minutes as max wait
+                            remaining_time = max(0, deadline - time.time())
+                            marker_timeout = max(remaining_time, 600.0) if timeout > 0 else 600.0
                             marker_check_interval = 2.0  # Check every 2 seconds
                             marker_deadline = time.time() + marker_timeout
 
