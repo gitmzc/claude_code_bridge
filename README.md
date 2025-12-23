@@ -1,6 +1,6 @@
 <div align="center">
 
-# Claude Code Bridge (ccb) v2.1
+# Claude Code Bridge (ccb) v2.2
 
 **🌍 Cross-Platform Multi-AI Collaboration: Claude + Codex + Gemini**
 
@@ -20,6 +20,20 @@
 </p>
 
 </div>
+
+---
+
+## 🎉 What's New in v2.2
+
+> **🛠️ CLI Improvements & Better Diagnostics**
+
+- **📋 Improved Help** — Grouped commands with examples (`ccb --help`)
+- **🔍 Debug Mode** — `--debug` flag for troubleshooting
+- **📊 JSON Output** — `--json` for machine-readable output
+- **🤫 Quiet Mode** — `-q/--quiet` for minimal output
+- **🩺 System Diagnostics** — `ccb doctor` to check your setup
+- **⚙️ Config Wizard** — `ccb init` for interactive configuration
+- **📖 Examples** — `ccb examples` for detailed usage examples
 
 ---
 
@@ -195,6 +209,20 @@ ccb update              # Update to latest version
 ---
 
 # 中文
+
+## 🎉 v2.2 新特性
+
+> **🛠️ CLI 改进与更好的诊断功能**
+
+- **📋 改进的帮助** — 分组显示命令和示例 (`ccb --help`)
+- **🔍 调试模式** — `--debug` 选项用于故障排查
+- **📊 JSON 输出** — `--json` 用于机器可读输出
+- **🤫 静默模式** — `-q/--quiet` 最小化输出
+- **🩺 系统诊断** — `ccb doctor` 检查环境配置
+- **⚙️ 配置向导** — `ccb init` 交互式配置
+- **📖 使用示例** — `ccb examples` 详细使用示例
+
+---
 
 ## 🎉 v2.1 新特性
 
