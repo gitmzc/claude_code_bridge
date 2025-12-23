@@ -244,6 +244,7 @@ class GeminiLogReader:
                 last_rescan = time.time()
 
             session = self._latest_session()
+            chats_dir = self._chats_dir()  # Define chats_dir for use in the loop
             if not session or not session.exists():
                 if not block:
                     return None, {
@@ -444,7 +445,7 @@ class GeminiLogReader:
                                     if len(messages2) > current_count:
                                         # More messages arrived, update state and continue stability check
                                         current_count = len(messages2)
-                                        # Re-collect ALL gemini contents from new messages
+                                        # Re-collect ALL gemini contents from new messages (from prev_count, not current_count)
                                         gemini_contents = []
                                         seen_hashes = set()
                                         if prev_last_gemini_hash:
@@ -466,6 +467,36 @@ class GeminiLogReader:
                                             break
                                         # Keep waiting for more messages or [CCB_REPLY_END] marker
                                         continue
+
+                                    # Check ALL gemini messages for [CCB_REPLY_END] marker (not just the last one)
+                                    # This handles cases where intermediate messages have empty content (only toolCalls)
+                                    for msg in messages2[prev_count:]:
+                                        if msg.get("type") == "gemini":
+                                            content = msg.get("content", "").strip()
+                                            if content and "[CCB_REPLY_END]" in content:
+                                                # Found marker in one of the messages
+                                                fast_exit_triggered = True
+                                                # Re-collect all gemini contents
+                                                gemini_contents = []
+                                                seen_hashes = set()
+                                                if prev_last_gemini_hash:
+                                                    seen_hashes.add(prev_last_gemini_hash)
+                                                for m in messages2[prev_count:]:
+                                                    if m.get("type") == "gemini":
+                                                        c = m.get("content", "").strip()
+                                                        if c:
+                                                            c_hash = hashlib.sha256(c.encode("utf-8")).hexdigest()
+                                                            if c_hash in seen_hashes:
+                                                                continue
+                                                            seen_hashes.add(c_hash)
+                                                            gemini_contents.append(c)
+                                                            last_gemini_id = m.get("id")
+                                                            last_gemini_hash = c_hash
+                                                break
+
+                                    if fast_exit_triggered:
+                                        break
+
                                     # Check if the last gemini message content changed (in-place update)
                                     last2 = self._extract_last_gemini(data2)
                                     if last2:
