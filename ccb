@@ -44,7 +44,7 @@ from constants import VERSION, VALID_PROVIDERS
 from launcher import AILauncher
 from doctor import run_diagnostics
 from init_wizard import run_init_wizard
-from output import init_output, is_quiet, is_json, print_msg, print_error, set_output, add_to_list, flush_json
+from output import init_output, is_quiet, is_json, is_debug, print_msg, print_error, print_debug, print_debug_exception, set_output, add_to_list, flush_json
 
 setup_windows_encoding()
 
@@ -66,15 +66,19 @@ def cmd_up(args):
 def cmd_status(args):
     providers = args.providers or ["codex", "gemini"]
     results = {}
+    print_debug(f"Checking status for providers: {providers}")
 
     for provider in providers:
         session_file = Path.cwd() / f".{provider}-session"
+        print_debug(f"Looking for session file: {session_file}")
         if not session_file.exists():
             results[provider] = {"status": "Not configured", "active": False}
+            print_debug(f"{provider}: session file not found")
             continue
 
         try:
             data = json.loads(session_file.read_text(encoding="utf-8-sig"))
+            print_debug(f"{provider}: loaded session data", json.dumps(data, indent=2))
             terminal = data.get("terminal", "tmux")
             pane_id = data.get("pane_id") if terminal in ("wezterm", "iterm2") else data.get("tmux_session", "")
             active = data.get("active", False)
@@ -420,6 +424,7 @@ def main():
     # Global options
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress non-essential output")
     parser.add_argument("--json", action="store_true", help="Output in JSON format")
+    parser.add_argument("--debug", action="store_true", help="Enable debug output for troubleshooting")
 
     subparsers = parser.add_subparsers(dest="command", help="Subcommands")
 
@@ -470,7 +475,7 @@ def main():
     args = parser.parse_args(argv)
 
     # Initialize output settings
-    init_output(quiet=args.quiet, json_output=args.json)
+    init_output(quiet=args.quiet, json_output=args.json, debug=args.debug)
 
     if not args.command:
         if not is_json():
