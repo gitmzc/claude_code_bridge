@@ -19,6 +19,8 @@ from typing import Optional, Tuple, Dict, Any
 from terminal import get_backend_for_session, get_pane_id_from_session
 from ccb_config import apply_backend_env
 from i18n import t
+import notify
+
 
 apply_backend_env()
 
@@ -474,6 +476,7 @@ class CodexCommunicator:
 
             print(f"🔔 {t('sending_to', provider='Codex')}", flush=True)
             marker, state = self._send_message(question)
+            notify.notify_waiting("Codex")
             wait_timeout = self.timeout if timeout is None else int(timeout)
             if wait_timeout == 0:
                 print(f"⏳ {t('waiting_for_reply', provider='Codex')}", flush=True)
@@ -487,6 +490,7 @@ class CodexCommunicator:
                         log_hint = self.log_reader.current_log_path()
                     self._remember_codex_session(log_hint)
                     if message:
+                        notify.notify_reply_received("Codex", message)
                         print(f"🤖 {t('reply_from', provider='Codex')}")
                         print(message)
                         return message
@@ -502,6 +506,7 @@ class CodexCommunicator:
                 log_hint = self.log_reader.current_log_path()
             self._remember_codex_session(log_hint)
             if message:
+                notify.notify_reply_received("Codex", message)
                 print(f"🤖 {t('reply_from', provider='Codex')}")
                 print(message)
                 return message
@@ -692,7 +697,8 @@ def main() -> int:
                 print("❌ Please provide a question")
                 return 1
             if args.wait:
-                comm.ask_sync(question_text, args.timeout)
+                if comm.ask_sync(question_text, args.timeout) is None:
+                    return 1
             else:
                 comm.ask_async(question_text)
         else:

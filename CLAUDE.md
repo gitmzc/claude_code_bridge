@@ -18,3 +18,4 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 <!-- OPENSPEC:END -->
 
 - This is the claude_code_bridge (ccb) development folder. Pay attention to compatibility. When modifying code, also update install scripts. Use install.sh/install.ps1 to install. After completion, git commit and push.
+- When using `cask-w` or `gask-w`, ALWAYS run them synchronously. Do not use background execution. The tool output will contain the reply.

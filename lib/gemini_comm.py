@@ -16,6 +16,8 @@ from typing import Optional, Tuple, Dict, Any
 from terminal import get_backend_for_session, get_pane_id_from_session
 from ccb_config import apply_backend_env
 from i18n import t
+import notify
+
 
 apply_backend_env()
 
@@ -651,6 +653,7 @@ class GeminiCommunicator:
             self._send_via_terminal(question)
             # Capture state after sending to reduce "question → send" latency.
             state = self.log_reader.capture_state()
+            notify.notify_waiting("Gemini")
 
             wait_timeout = self.timeout if timeout is None else int(timeout)
             if wait_timeout == 0:
@@ -664,6 +667,7 @@ class GeminiCommunicator:
                     if isinstance(session_path, Path):
                         self._remember_gemini_session(session_path)
                     if message:
+                        notify.notify_reply_received("Gemini", message)
                         print(f"🤖 {t('reply_from', provider='Gemini')}")
                         print(message)
                         return message
@@ -678,6 +682,7 @@ class GeminiCommunicator:
             if isinstance(session_path, Path):
                 self._remember_gemini_session(session_path)
             if message:
+                notify.notify_reply_received("Gemini", message)
                 print(f"🤖 {t('reply_from', provider='Gemini')}")
                 print(message)
                 return message
@@ -813,7 +818,8 @@ def main() -> int:
                 print("❌ Please provide a question")
                 return 1
             if args.wait:
-                comm.ask_sync(question_text, args.timeout)
+                if comm.ask_sync(question_text, args.timeout) is None:
+                    return 1
             else:
                 comm.ask_async(question_text)
         else:
