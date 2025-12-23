@@ -460,6 +460,67 @@ def cmd_completion(args):
     return ExitCode.SUCCESS
 
 
+def cmd_examples(args):
+    """Show detailed usage examples"""
+    examples_text = """ccb Usage Examples
+==================
+
+Starting AI Backends:
+  ccb up codex                    # Start Codex backend only
+  ccb up gemini                   # Start Gemini backend only
+  ccb up codex gemini             # Start both backends
+  ccb up                          # Start default backend (codex)
+
+Resume Previous Context:
+  ccb up -r                       # Resume with previous session context
+  ccb up codex -r                 # Resume Codex with previous context
+  ccb -r                          # Shortcut for 'ccb up -r'
+
+Auto Permission Mode:
+  ccb up -a                       # Start with full auto permission
+  ccb up codex gemini -a -r       # Resume both with auto permission
+
+Session Management:
+  ccb status                      # Check status of all backends
+  ccb status codex                # Check Codex status only
+  ccb kill                        # Terminate all sessions
+  ccb kill gemini                 # Terminate Gemini only
+  ccb restore codex               # Restore/attach to Codex session
+
+System Commands:
+  ccb init                        # Run interactive configuration wizard
+  ccb init -f                     # Force overwrite existing config
+  ccb doctor                      # Run system diagnostics
+  ccb doctor -v                   # Verbose diagnostics
+  ccb update                      # Update ccb to latest version
+  ccb version                     # Show version and check for updates
+
+Output Control:
+  ccb status --json               # Output status in JSON format
+  ccb status -q                   # Quiet mode (minimal output)
+  ccb --debug status              # Enable debug output
+
+Shell Completion:
+  ccb completion zsh              # Output zsh completion script
+  eval "$(ccb completion zsh)"    # Enable completion in current shell
+
+Communication Commands (via bridge):
+  cask "message"                  # Send message to Codex (fire and forget)
+  cask-w "message"                # Send to Codex and wait for reply
+  gask "message"                  # Send message to Gemini
+  gask-w "message"                # Send to Gemini and wait for reply
+  cping                           # Check Codex connectivity
+  gping                           # Check Gemini connectivity
+
+Environment Variables:
+  CCB_QUIET=1                     # Enable quiet mode globally
+  CCB_DEBUG=1                     # Enable debug mode globally
+  CCB_BACKEND_ENV=wsl             # Force WSL backend environment
+"""
+    print(examples_text.strip())
+    return ExitCode.SUCCESS
+
+
 def main():
     parser = argparse.ArgumentParser(description="Claude AI unified launcher", add_help=False)
     # Global options
@@ -508,6 +569,9 @@ def main():
     completion_parser = subparsers.add_parser("completion", help="Output shell completion script")
     completion_parser.add_argument("shell", nargs="?", default="zsh", help="Shell type (default: zsh)")
 
+    # examples subcommand
+    subparsers.add_parser("examples", help="Show detailed usage examples")
+
     argv = sys.argv[1:]
     # Backward/shortcut compatibility
     if argv and argv[0] in {"-r", "--resume", "--restore"}:
@@ -547,9 +611,11 @@ def main():
         return cmd_init(args)
     elif args.command == "completion":
         return cmd_completion(args)
+    elif args.command == "examples":
+        return cmd_examples(args)
     else:
         if not is_json():
-            parser.print_help()
+            print_custom_help()
         return 1
 
 
