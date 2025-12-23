@@ -794,22 +794,15 @@ exec tmux attach -t "$TMUX_SESSION"
         cmd = [claude_cmd]
         if self.auto:
             cmd.append("--dangerously-skip-permissions")
-        local_session_id: str | None = None
         if self.resume:
-            local_session_id = self._read_local_claude_session_id()
-            # Only resume if Claude can actually find the session on disk.
-            if local_session_id and (Path.home() / ".claude" / "session-env" / local_session_id).exists():
-                cmd.extend(["--resume", local_session_id])
-                print(f"🔁 {t('resuming_claude', session_id=local_session_id[:8])}")
+            # Use --continue instead of --resume <session_id> for simpler logic
+            # Check if there's any history for this project before using --continue
+            _, has_history = self._get_latest_claude_session_id()
+            if has_history:
+                cmd.append("--continue")
+                print(f"🔁 {t('resuming_claude', session_id='')}")
             else:
-                local_session_id = None
                 print(f"ℹ️ {t('no_claude_session')}")
-
-        # Always start Claude with an explicit session id when not resuming, so the id is local and resettable.
-        if not local_session_id:
-            new_id = str(uuid.uuid4())
-            cmd.extend(["--session-id", new_id])
-            self._write_local_claude_session(new_id, active=True)
 
         print(f"📋 Session ID: {self.session_id}")
         print(f"📁 Runtime dir: {self.runtime_dir}")
