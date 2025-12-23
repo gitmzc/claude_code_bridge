@@ -45,6 +45,7 @@ from launcher import AILauncher
 from doctor import run_diagnostics
 from init_wizard import run_init_wizard
 from output import init_output, is_quiet, is_json, is_debug, print_msg, print_error, print_debug, print_debug_exception, set_output, add_to_list, flush_json
+from errors import ExitCode, format_error, print_error_and_exit
 
 setup_windows_encoding()
 
@@ -346,7 +347,7 @@ def cmd_update(args):
             print(f"✅ Updated: {old_str} → {new_str}")
         else:
             print(f"✅ Already up to date: {new_str}")
-        return 0
+        return ExitCode.SUCCESS
     elif "Git not available" not in message:
         print(f"⚠️ {message}")
         print("Falling back to tarball download...")
@@ -363,10 +364,9 @@ def cmd_update(args):
             print(f"✅ Updated: {old_str} → {new_str}")
         else:
             print(f"✅ Already up to date: {new_str}")
-        return 0
+        return ExitCode.SUCCESS
     else:
-        print(f"❌ {message}")
-        return 1
+        return print_error_and_exit(ExitCode.UPDATE_FAILED, message)
 
 
 def cmd_doctor(args):
@@ -388,11 +388,10 @@ def cmd_init(args):
         print(f"Configuration file already exists: {check_path}")
         response = input("Overwrite existing configuration? [y/N]: ").strip().lower()
         if response not in ("y", "yes"):
-            print("Use --force to overwrite, or specify a different path with --config")
-            return 1
+            return print_error_and_exit(ExitCode.CONFIG_PERMISSION, "Use --force to overwrite, or specify a different path with --config")
 
     config = run_init_wizard(config_path)
-    return 0 if config else 1
+    return ExitCode.SUCCESS if config else ExitCode.GENERAL_ERROR
 
 
 def cmd_completion(args):
@@ -410,13 +409,11 @@ def cmd_completion(args):
             print(f"# fpath=({completions_dir} $fpath)")
             print("# autoload -Uz compinit && compinit")
         else:
-            print(f"Error: Completion file not found: {completion_file}", file=sys.stderr)
-            return 1
+            return print_error_and_exit(ExitCode.CONFIG_NOT_FOUND, f"Completion file not found: {completion_file}")
     else:
-        print(f"Unsupported shell: {shell}. Only 'zsh' is supported on macOS.", file=sys.stderr)
-        return 1
+        return print_error_and_exit(ExitCode.USAGE_ERROR, f"Unsupported shell: {shell}. Only 'zsh' is supported on macOS.")
 
-    return 0
+    return ExitCode.SUCCESS
 
 
 def main():
