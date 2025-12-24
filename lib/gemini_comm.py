@@ -211,6 +211,46 @@ class GeminiLogReader:
             pass
         return None
 
+    def latest_conversations(self, n: int = 1) -> list[dict]:
+        """Get the latest N Q&A pairs from the session.
+
+        Returns a list of dicts with 'question' and 'answer' keys.
+        """
+        session = self._latest_session()
+        if not session or not session.exists():
+            return []
+
+        try:
+            with session.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            messages = data.get("messages", [])
+        except (OSError, json.JSONDecodeError):
+            return []
+
+        # Extract Q&A pairs
+        # Gemini session format: messages with type="user" (question) and type="gemini" (answer)
+        conversations = []
+        current_question = None
+
+        for msg in messages:
+            msg_type = msg.get("type")
+            content = msg.get("content", "").strip()
+
+            if msg_type == "user" and content:
+                current_question = content
+            elif msg_type == "gemini" and content and current_question:
+                # Clean up markers
+                clean_content = content.replace("[CCB_REPLY_END]", "").replace("[GEMINI_TURN_END]", "").strip()
+                if clean_content:
+                    conversations.append({
+                        "question": current_question,
+                        "answer": clean_content
+                    })
+                    current_question = None
+
+        # Return the last N conversations
+        return conversations[-n:] if n > 0 else conversations
+
     def _read_since(self, state: Dict[str, Any], timeout: float, block: bool) -> Tuple[Optional[str], Dict[str, Any]]:
         deadline = time.time() + timeout
         prev_count = state.get("msg_count", 0)

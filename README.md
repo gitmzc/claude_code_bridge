@@ -34,6 +34,9 @@
 - **🩺 System Diagnostics** — `ccb doctor` to check your setup
 - **⚙️ Config Wizard** — `ccb init` for interactive configuration
 - **📖 Examples** — `ccb examples` for detailed usage examples
+- **📜 Conversation History** — `cpend N` / `gpend N` to view recent N Q&A pairs
+- **⚡ WezTerm Optimization** — Dual-path strategy for faster text sending
+- **🪟 Windows GBK Fix** — Better encoding handling for Chinese Windows
 
 ---
 
@@ -182,6 +185,7 @@ ccb update              # Update to latest version
 | `cask-w <msg>` | Sync: wait for reply |
 | `cask <msg>` | Async: fire-and-forget |
 | `cpend` | Show latest reply |
+| `cpend N` | Show last N Q&A pairs (e.g., `cpend 3`) |
 | `cping` | Connectivity check |
 
 **Gemini:**
@@ -191,6 +195,7 @@ ccb update              # Update to latest version
 | `gask-w <msg>` | Sync: wait for reply |
 | `gask <msg>` | Async: fire-and-forget |
 | `gpend` | Show latest reply |
+| `gpend N` | Show last N Q&A pairs (e.g., `gpend 5`) |
 | `gping` | Connectivity check |
 
 ## Requirements
@@ -221,6 +226,9 @@ ccb update              # Update to latest version
 - **🩺 系统诊断** — `ccb doctor` 检查环境配置
 - **⚙️ 配置向导** — `ccb init` 交互式配置
 - **📖 使用示例** — `ccb examples` 详细使用示例
+- **📜 对话历史** — `cpend N` / `gpend N` 查看最近 N 个问答对
+- **⚡ WezTerm 优化** — 双路径策略加速文本发送
+- **🪟 Windows GBK 修复** — 改进中文 Windows 编码处理
 
 ---
 
@@ -386,6 +394,7 @@ ccb update              # 更新到最新版本
 | `cask-w <消息>` | 同步：等待回复 |
 | `cask <消息>` | 异步：发送即返回 |
 | `cpend` | 查看最新回复 |
+| `cpend N` | 查看最近 N 个问答对（如 `cpend 3`） |
 | `cping` | 测试连通性 |
 
 **Gemini:**
@@ -395,6 +404,7 @@ ccb update              # 更新到最新版本
 | `gask-w <消息>` | 同步：等待回复 |
 | `gask <消息>` | 异步：发送即返回 |
 | `gpend` | 查看最新回复 |
+| `gpend N` | 查看最近 N 个问答对（如 `gpend 5`） |
 | `gping` | 测试连通性 |
 
 ## 依赖

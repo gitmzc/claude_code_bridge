@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-gpend - View latest Gemini reply
+gpend - View latest Gemini reply or recent N conversations
+
+Usage:
+  gpend        # View latest reply
+  gpend N      # View last N Q&A pairs (e.g., gpend 3)
 """
 
 import sys
@@ -36,8 +40,42 @@ def _load_cached_reply() -> str | None:
     return None
 
 
+def _print_conversations(conversations: list[dict]) -> None:
+    """Print Q&A pairs in formatted output"""
+    for i, conv in enumerate(conversations):
+        print(f"Q: {conv['question']}")
+        print(f"A: {conv['answer']}")
+        if i < len(conversations) - 1:
+            print("---")
+
+
 def main() -> int:
+    # Parse N argument
+    n_conversations = 0
+    if len(sys.argv) > 1:
+        try:
+            n_conversations = int(sys.argv[1])
+            if n_conversations < 1:
+                print("Error: N must be a positive integer (>= 1)")
+                print("Usage: gpend [N]  # N = number of recent conversations to show")
+                return 1
+        except ValueError:
+            print(f"Invalid argument: {sys.argv[1]}")
+            print("Usage: gpend [N]  # N = number of recent conversations to show")
+            return 1
+
     try:
+        # If N is specified, show recent N conversations
+        if n_conversations > 0:
+            comm = GeminiCommunicator(lazy_init=True)
+            conversations = comm.log_reader.latest_conversations(n_conversations)
+            if conversations:
+                _print_conversations(conversations)
+            else:
+                print(t('no_reply_available', provider='Gemini'))
+            return 0
+
+        # Default behavior: show latest reply
         # First check cached reply from background gask-w
         cached = _load_cached_reply()
         if cached:

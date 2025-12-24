@@ -285,24 +285,53 @@ class WeztermBackend(TerminalBackend):
         cls._wezterm_bin = found or "wezterm"
         return cls._wezterm_bin
 
-    def send_text(self, pane_id: str, text: str) -> None:
-        sanitized = text.replace("\r", "").replace("\n", "").strip()
-        if not sanitized:
-            return
-        subprocess.run(
-            [*self._cli_base_args(), "send-text", "--pane-id", pane_id, "--no-paste", sanitized],
-            check=True,
-        )
-        enter_delay = _env_float("CCB_WEZTERM_ENTER_DELAY", 0.01)
-        if enter_delay:
-            time.sleep(enter_delay)
-        # Send Enter via stdin to ensure the actual byte (0x0d) is sent, not the string "\r".
-        # Some TUI apps (like Gemini CLI) treat command-line "\r" or "\n" as newlines in input box.
+    def _send_enter(self, pane_id: str) -> None:
+        """Send Enter key reliably via stdin (byte 0x0d)."""
         subprocess.run(
             [*self._cli_base_args(), "send-text", "--pane-id", pane_id, "--no-paste"],
             input=b"\r",
             check=False,
         )
+
+    def send_text(self, pane_id: str, text: str) -> None:
+        """Send text to WezTerm pane with dual-path strategy.
+
+        Fast path: Short single-line text (<200 chars) uses --no-paste for speed.
+        Slow path: Multiline or long text uses paste mode with configurable delay.
+        """
+        sanitized = text.replace("\r", "").strip()
+        if not sanitized:
+            return
+
+        is_single_line = "\n" not in sanitized
+        is_short = len(sanitized) < 200
+
+        # Fast path: short single-line text
+        if is_single_line and is_short:
+            subprocess.run(
+                [*self._cli_base_args(), "send-text", "--pane-id", pane_id, "--no-paste", sanitized],
+                check=True,
+            )
+            enter_delay = _env_float("CCB_WEZTERM_ENTER_DELAY", 0.01)
+            if enter_delay:
+                time.sleep(enter_delay)
+            self._send_enter(pane_id)
+            return
+
+        # Slow path: multiline or long text - use paste mode
+        # Strip newlines for single-line paste (TUI apps may interpret \n as submit)
+        paste_text = sanitized.replace("\n", " ") if is_single_line else sanitized
+        paste_delay = _env_float("CCB_WEZTERM_PASTE_DELAY", 0.1)
+
+        subprocess.run(
+            [*self._cli_base_args(), "send-text", "--pane-id", pane_id, paste_text],
+            check=True,
+        )
+
+        if paste_delay:
+            time.sleep(paste_delay)
+
+        self._send_enter(pane_id)
 
     def is_alive(self, pane_id: str) -> bool:
         try:

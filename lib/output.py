@@ -1,13 +1,15 @@
 """
 Output control module for ccb.
-Provides quiet mode, debug mode, and JSON output formatting.
+Provides quiet mode, debug mode, JSON output formatting, and atomic file writes.
 """
 
 import os
 import sys
 import json
+import tempfile
 import traceback
-from typing import Any, Optional
+from pathlib import Path
+from typing import Any, Optional, Union
 
 # Global output state
 _quiet_mode = False
@@ -115,3 +117,70 @@ def flush_json(exit_code: int = 0) -> int:
             _output_data["errors"] = _errors
         print(json.dumps(_output_data, ensure_ascii=False, indent=2))
     return exit_code
+
+
+def atomic_write(file_path: Union[str, Path], content: str, encoding: str = "utf-8") -> bool:
+    """Write content to file atomically using temp file + rename.
+
+    This prevents partial writes and ensures the file is either fully written
+    or not modified at all. Safe for concurrent access.
+
+    Args:
+        file_path: Target file path
+        content: Content to write
+        encoding: File encoding (default: utf-8)
+
+    Returns:
+        True if successful, False otherwise
+    """
+    target = Path(file_path)
+    target_dir = target.parent
+
+    try:
+        # Ensure parent directory exists
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write to temp file in same directory (for atomic rename)
+        fd, tmp_path = tempfile.mkstemp(
+            dir=target_dir,
+            prefix=f".{target.name}.",
+            suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding=encoding) as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+
+            # Atomic rename (works on POSIX, best-effort on Windows)
+            os.replace(tmp_path, target)
+            return True
+        except Exception:
+            # Clean up temp file on failure
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+    except Exception as e:
+        print_debug(f"atomic_write failed for {file_path}: {e}")
+        return False
+
+
+def atomic_write_json(file_path: Union[str, Path], data: Any, indent: int = 2) -> bool:
+    """Write JSON data to file atomically.
+
+    Args:
+        file_path: Target file path
+        data: Data to serialize as JSON
+        indent: JSON indentation (default: 2)
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        content = json.dumps(data, ensure_ascii=False, indent=indent)
+        return atomic_write(file_path, content)
+    except (TypeError, ValueError) as e:
+        print_debug(f"atomic_write_json serialization failed: {e}")
+        return False

@@ -159,6 +159,65 @@ class CodexLogReader:
                 return message
         return None
 
+    def latest_conversations(self, n: int = 1) -> list[dict]:
+        """Get the latest N Q&A pairs from the log.
+
+        Returns a list of dicts with 'question' and 'answer' keys.
+        """
+        log_path = self._latest_log()
+        if not log_path or not log_path.exists():
+            return []
+
+        conversations = []
+        try:
+            with log_path.open("r", encoding="utf-8", errors="ignore") as handle:
+                lines = handle.readlines()
+        except OSError:
+            return []
+
+        # Parse all entries
+        entries = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                entries.append(entry)
+            except json.JSONDecodeError:
+                continue
+
+        # Extract Q&A pairs
+        # Codex log format: conversation_item with role=user (question) and response_item with message (answer)
+        current_question = None
+        for entry in entries:
+            entry_type = entry.get("type")
+
+            # User input (question)
+            if entry_type == "conversation_item":
+                payload = entry.get("payload", {})
+                if payload.get("role") == "user":
+                    content = payload.get("content", [])
+                    texts = [item.get("text", "") for item in content if item.get("type") == "input_text"]
+                    if texts:
+                        current_question = "\n".join(filter(None, texts)).strip()
+
+            # Assistant response (answer)
+            elif entry_type == "response_item":
+                message = self._extract_message(entry)
+                if message and current_question:
+                    # Clean up markers (consistent with Gemini side)
+                    clean_message = message.replace("[CCB_REPLY_END]", "").strip()
+                    if clean_message:
+                        conversations.append({
+                            "question": current_question,
+                            "answer": clean_message
+                        })
+                    current_question = None
+
+        # Return the last N conversations
+        return conversations[-n:] if n > 0 else conversations
+
     def _read_since(self, state: Dict[str, Any], timeout: float, block: bool) -> Tuple[Optional[str], Dict[str, Any]]:
         deadline = time.time() + timeout
         current_path = self._normalize_path(state.get("log_path"))
