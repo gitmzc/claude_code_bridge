@@ -66,13 +66,8 @@ def _send_and_wait(provider: str, message: str, timeout: int) -> Dict[str, Any]:
             return result
 
         # Send message and capture state
-        if provider == "codex":
-            marker, state = comm._send_message(message)
-            reply, new_state = comm.log_reader.wait_for_message(state, float(timeout) if timeout > 0 else 600.0)
-        else:  # gemini
-            comm._send_via_terminal(message)
-            state = comm.log_reader.capture_state()
-            reply, new_state = comm.log_reader.wait_for_message(state, float(timeout) if timeout > 0 else 600.0)
+        marker, state = comm._send_payload(message)
+        reply, new_state = comm.log_reader.wait_for_message(state, float(timeout) if timeout > 0 else 600.0)
 
         if reply:
             result["success"] = True

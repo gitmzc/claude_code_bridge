@@ -133,6 +133,40 @@ class CodexLogReader(BaseLogReader):
                 offset = 0
         return {"log_path": log, "offset_info": (offset, [])}
 
+    def wait_for_message(self, state: Dict[str, Any], timeout: float) -> Tuple[Optional[str], Dict[str, Any]]:
+        """Block and wait for new Codex reply"""
+        deadline = time.time() + timeout
+        log_path = state.get("log_path") or self.current_log_path()
+        offset_info = state.get("offset_info", (0, []))
+
+        while True:
+            if log_path and log_path.exists():
+                message, new_offset_info = self._extract_message_from_data(log_path, offset_info[0] if isinstance(offset_info, tuple) else offset_info)
+                if message:
+                    return message, {"log_path": log_path, "offset_info": new_offset_info}
+                offset_info = new_offset_info
+
+            if time.time() >= deadline:
+                return None, {"log_path": log_path, "offset_info": offset_info}
+
+            # Wait for file change
+            if log_path and log_path.exists():
+                self._watcher.wait_for_change(log_path, timeout=self._poll_interval)
+            else:
+                time.sleep(self._poll_interval)
+                log_path = self.current_log_path()
+
+    def try_get_message(self, state: Dict[str, Any]) -> Tuple[Optional[str], Dict[str, Any]]:
+        """Non-blocking read for reply"""
+        log_path = state.get("log_path") or self.current_log_path()
+        offset_info = state.get("offset_info", (0, []))
+
+        if log_path and log_path.exists():
+            message, new_offset_info = self._extract_message_from_data(log_path, offset_info[0] if isinstance(offset_info, tuple) else offset_info)
+            return message, {"log_path": log_path, "offset_info": new_offset_info}
+
+        return None, {"log_path": log_path, "offset_info": offset_info}
+
     def latest_message(self) -> Optional[str]:
         log_path = self.current_log_path()
         if not log_path or not log_path.exists():
@@ -166,6 +200,56 @@ class CodexLogReader(BaseLogReader):
             if message:
                 return message.replace("[CCB_REPLY_END]", "").strip()
         return None
+
+    def latest_conversations(self, n: int = 1) -> List[Dict[str, str]]:
+        """Get the latest N Q&A pairs from the log.
+
+        Returns a list of dicts with 'question' and 'answer' keys.
+        """
+        log_path = self.current_log_path()
+        if not log_path or not log_path.exists():
+            return []
+
+        try:
+            with log_path.open("rb") as handle:
+                content = handle.read().decode("utf-8", errors="ignore")
+            lines = content.splitlines()
+        except OSError:
+            return []
+
+        # Parse all entries
+        conversations = []
+        current_question = None
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            # Check for user input
+            if entry.get("type") == "input":
+                payload = entry.get("payload", {})
+                if isinstance(payload, dict):
+                    content = payload.get("content", "")
+                    if content:
+                        current_question = content.strip()
+
+            # Check for assistant response
+            message = self._extract_message_content(entry)
+            if message and current_question:
+                clean_message = message.replace("[CCB_REPLY_END]", "").strip()
+                if clean_message:
+                    conversations.append({
+                        "question": current_question,
+                        "answer": clean_message
+                    })
+                    current_question = None
+
+        return conversations[-n:] if n > 0 else conversations
 
     @staticmethod
     def _extract_message_content(entry: dict) -> Optional[str]:

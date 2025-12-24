@@ -74,8 +74,8 @@ def main(argv: list[str]) -> int:
 
         # Send message
         print(f"🔔 {t('sending_to', provider='Gemini')}", flush=True)
-        marker, state = comm._send_message(message)
-        comm._remember_gemini_session(state.get("session_path") or comm.log_reader.current_session_path())
+        marker, state = comm._send_payload(message)
+        comm._remember_session(state.get("session_path") or comm.log_reader.current_log_path())
 
         # Pure sync wait with heartbeat (default 1 hour, configurable via CCB_SYNC_TIMEOUT)
         sync_timeout = float(os.environ.get("CCB_SYNC_TIMEOUT", "3600.0"))
@@ -114,7 +114,7 @@ def main(argv: list[str]) -> int:
                 last_heartbeat = now
                 heartbeat_idx += 1
 
-        comm._remember_gemini_session(state.get("session_path") or comm.log_reader.current_session_path())
+        comm._remember_session(state.get("session_path") or comm.log_reader.current_log_path())
 
         # Save to cache
         cache_dir = Path.home() / ".cache" / "ccb"
