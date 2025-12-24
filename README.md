@@ -225,13 +225,3 @@ ccb update              # 更新到最新版本
 ```bash
 ./install.sh uninstall
 ```
-
----
-
-<div align="center">
-
-**测试用户群，欢迎大佬们**
-
-<img src="assets/wechat.jpg" alt="WeChat Group" width="300">
-
-</div>
