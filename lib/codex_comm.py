@@ -64,21 +64,27 @@ class CodexLogReader(BaseLogReader):
 
     def _extract_message_from_data(self, log_path: Path, offset_info: Any = None) -> Tuple[Optional[str], Any]:
         """
-        Reads from log_path starting at offset_info (int byte offset).
-        Returns (message, new_offset).
+        Reads from log_path starting at offset_info (tuple of byte_offset and partial_msgs).
+        Returns (message, new_offset_info).
         """
-        byte_offset = offset_info if isinstance(offset_info, int) else 0
-        partial_msgs = []
-        
-        # If byte_offset is None/0 initially, we might want to start at EOF for new sessions?
-        # But capture_state sets the initial baseline.
-        
+        # Parse offset_info: can be (byte_offset, partial_msgs) tuple or just int
+        if isinstance(offset_info, tuple) and len(offset_info) == 2:
+            byte_offset = offset_info[0] if isinstance(offset_info[0], int) else 0
+            partial_msgs = list(offset_info[1]) if offset_info[1] else []
+        elif isinstance(offset_info, int):
+            byte_offset = offset_info
+            partial_msgs = []
+        else:
+            byte_offset = 0
+            partial_msgs = []
+
         try:
             current_size = log_path.stat().st_size
             if byte_offset > current_size:
+                # File was truncated/rotated, reset state
                 byte_offset = 0
                 partial_msgs = []
-                
+
             if byte_offset == current_size:
                  return None, (byte_offset, partial_msgs)
 
@@ -141,7 +147,8 @@ class CodexLogReader(BaseLogReader):
 
         while True:
             if log_path and log_path.exists():
-                message, new_offset_info = self._extract_message_from_data(log_path, offset_info[0] if isinstance(offset_info, tuple) else offset_info)
+                # Pass the full offset_info tuple to preserve partial_msgs
+                message, new_offset_info = self._extract_message_from_data(log_path, offset_info)
                 if message:
                     return message, {"log_path": log_path, "offset_info": new_offset_info}
                 offset_info = new_offset_info
@@ -162,7 +169,8 @@ class CodexLogReader(BaseLogReader):
         offset_info = state.get("offset_info", (0, []))
 
         if log_path and log_path.exists():
-            message, new_offset_info = self._extract_message_from_data(log_path, offset_info[0] if isinstance(offset_info, tuple) else offset_info)
+            # Pass the full offset_info tuple to preserve partial_msgs
+            message, new_offset_info = self._extract_message_from_data(log_path, offset_info)
             return message, {"log_path": log_path, "offset_info": new_offset_info}
 
         return None, {"log_path": log_path, "offset_info": offset_info}
