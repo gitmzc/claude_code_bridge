@@ -9,15 +9,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 import time
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, List
 
-from terminal import get_backend_for_session, get_pane_id_from_session
+from base_ai_comm import BaseLogReader, BaseCommunicator
 from ccb_config import apply_backend_env
-from i18n import t
-from fs_watcher import FileWatcher
-import notify
 
 
 apply_backend_env()
@@ -37,20 +35,18 @@ def _get_project_hash(work_dir: Optional[Path] = None) -> str:
     return hashlib.sha256(normalized.encode()).hexdigest()
 
 
-class GeminiLogReader:
+class GeminiLogReader(BaseLogReader):
     """Reads Gemini session files from ~/.gemini/tmp/<hash>/chats"""
 
     def __init__(self, root: Path = GEMINI_ROOT, work_dir: Optional[Path] = None):
-        self.root = Path(root).expanduser()
-        self.work_dir = work_dir or Path.cwd()
-        forced_hash = os.environ.get("GEMINI_PROJECT_HASH", "").strip()
-        self._project_hash = forced_hash or _get_project_hash(self.work_dir)
-        self._preferred_session: Optional[Path] = None
         try:
             poll = float(os.environ.get("GEMINI_POLL_INTERVAL", "0.05"))
         except Exception:
             poll = 0.05
-        self._poll_interval = min(0.5, max(0.02, poll))
+        super().__init__(root, poll_interval=poll)
+        self.work_dir = work_dir or Path.cwd()
+        forced_hash = os.environ.get("GEMINI_PROJECT_HASH", "").strip()
+        self._project_hash = forced_hash or _get_project_hash(self.work_dir)
         # Some filesystems only update mtime at 1s granularity. When waiting for a reply,
         # force a read periodically to avoid missing in-place updates that keep size/mtime unchanged.
         try:
@@ -58,7 +54,22 @@ class GeminiLogReader:
         except Exception:
             force = 1.0
         self._force_read_interval = min(5.0, max(0.2, force))
-        self._watcher = FileWatcher()
+
+    def set_preferred_log(self, log_path: Optional[Path]) -> None:
+        if not log_path:
+            return
+        try:
+            candidate = log_path if isinstance(log_path, Path) else Path(str(log_path)).expanduser()
+        except Exception:
+            return
+        if candidate.exists():
+            self._preferred_log = candidate
+            try:
+                project_hash = candidate.parent.parent.name
+                if project_hash:
+                    self._project_hash = project_hash
+            except Exception:
+                pass
 
     def _chats_dir(self) -> Optional[Path]:
         chats = self.root / self._project_hash / "chats"
@@ -96,8 +107,11 @@ class GeminiLogReader:
         # fallback: projectHash may mismatch due to path normalization differences (Windows/WSL, symlinks, etc.)
         return self._scan_latest_session_any_project()
 
+    def _scan_latest(self) -> Optional[Path]:
+        return self._scan_latest_session()
+
     def _latest_session(self) -> Optional[Path]:
-        preferred = self._preferred_session
+        preferred = self._preferred_log
         # Always scan for latest to detect if preferred is stale
         latest = self._scan_latest_session()
         if latest:
@@ -107,7 +121,7 @@ class GeminiLogReader:
                     preferred_mtime = preferred.stat().st_mtime if preferred and preferred.exists() else 0
                     latest_mtime = latest.stat().st_mtime
                     if latest_mtime > preferred_mtime:
-                        self._preferred_session = latest
+                        self._preferred_log = latest
                         try:
                             project_hash = latest.parent.parent.name
                             if project_hash:
@@ -116,22 +130,12 @@ class GeminiLogReader:
                             pass
                         return latest
                 except OSError:
-                    self._preferred_session = latest
+                    self._preferred_log = latest
                     return latest
             return preferred
         return preferred if preferred and preferred.exists() else None
 
-    def set_preferred_session(self, session_path: Optional[Path]) -> None:
-        if not session_path:
-            return
-        try:
-            candidate = session_path if isinstance(session_path, Path) else Path(str(session_path)).expanduser()
-        except Exception:
-            return
-        if candidate.exists():
-            self._preferred_session = candidate
-
-    def current_session_path(self) -> Optional[Path]:
+    def current_log_path(self) -> Optional[Path]:
         return self._latest_session()
 
     def capture_state(self) -> Dict[str, Any]:
@@ -211,7 +215,7 @@ class GeminiLogReader:
             pass
         return None
 
-    def latest_conversations(self, n: int = 1) -> list[dict]:
+    def latest_conversations(self, n: int = 1) -> List[Dict[str, str]]:
         """Get the latest N Q&A pairs from the session.
 
         Returns a list of dicts with 'question' and 'answer' keys.
@@ -272,8 +276,8 @@ class GeminiLogReader:
             # Periodically rescan to detect new session files
             if time.time() - last_rescan >= rescan_interval:
                 latest = self._scan_latest_session()
-                if latest and latest != self._preferred_session:
-                    self._preferred_session = latest
+                if latest and latest != self._preferred_log:
+                    self._preferred_log = latest
                     # New session file, reset counters
                     if latest != prev_session:
                         prev_count = 0
@@ -284,7 +288,7 @@ class GeminiLogReader:
                 last_rescan = time.time()
 
             session = self._latest_session()
-            chats_dir = self._chats_dir()  # Define chats_dir for use in the loop
+            chats_dir = self._chats_dir()
             if not session or not session.exists():
                 if not block:
                     return None, {
@@ -295,14 +299,13 @@ class GeminiLogReader:
                         "last_gemini_id": prev_last_gemini_id,
                         "last_gemini_hash": prev_last_gemini_hash,
                     }
-                # Use watcher to wait for session file creation if we have a directory
                 if chats_dir and chats_dir.exists():
                     self._watcher.wait_for_change(chats_dir, timeout=self._poll_interval)
                 elif self.root.exists():
                     self._watcher.wait_for_change(self.root, timeout=self._poll_interval)
                 else:
                     time.sleep(self._poll_interval)
-                
+
                 if time.time() >= deadline:
                     return None, state
                 continue
@@ -316,10 +319,8 @@ class GeminiLogReader:
                 # Use file size as additional change signal.
                 if block and current_mtime_ns <= prev_mtime_ns and current_size == prev_size:
                     if time.time() - last_forced_read < self._force_read_interval:
-                        # Wait for file change event instead of sleeping
                         if not self._watcher.wait_for_change(session, timeout=self._poll_interval):
-                             # Timeout (no change), check if deadline exceeded
-                             if time.time() >= deadline:
+                            if time.time() >= deadline:
                                 return None, {
                                     "session_path": session,
                                     "msg_count": prev_count,
@@ -329,8 +330,7 @@ class GeminiLogReader:
                                     "last_gemini_id": prev_last_gemini_id,
                                     "last_gemini_hash": prev_last_gemini_hash,
                                 }
-                             continue
-                    # fallthrough: forced read or event detected
+                            continue
 
                 with session.open("r", encoding="utf-8") as f:
                     data = json.load(f)
@@ -339,9 +339,6 @@ class GeminiLogReader:
                 current_count = len(messages)
 
                 if unknown_baseline:
-                    # If capture_state couldn't parse the JSON (transient in-place writes), the wait
-                    # loop may see a fully-written reply in the first successful read. If we treat
-                    # that read as a "baseline" we can miss the reply forever.
                     last_msg = messages[-1] if messages else None
                     if isinstance(last_msg, dict):
                         last_type = last_msg.get("type")
@@ -350,18 +347,15 @@ class GeminiLogReader:
                         last_type = None
                         last_content = ""
 
-                    # Only fast-path when the file has changed since the baseline stat and the
-                    # latest message is a non-empty Gemini reply.
                     if (
                         last_type == "gemini"
                         and last_content
                         and (current_mtime_ns > prev_mtime_ns or current_size != prev_size)
                     ):
                         msg_id = last_msg.get("id") if isinstance(last_msg, dict) else None
-                        # Check for fast-exit marker
                         if "[CCB_REPLY_END]" in last_content:
                             last_content = last_content.replace("[CCB_REPLY_END]", "").replace("[GEMINI_TURN_END]", "").rstrip()
-                        
+
                         content_hash = hashlib.sha256(last_content.encode("utf-8")).hexdigest()
                         return last_content, {
                             "session_path": session,
@@ -406,8 +400,6 @@ class GeminiLogReader:
                     continue
 
                 if current_count > prev_count:
-                    # Collect ALL new gemini messages and merge them
-                    # This ensures we capture multi-message responses (e.g., tool use scenarios)
                     gemini_contents = []
                     last_gemini_id = None
                     last_gemini_hash = None
@@ -421,7 +413,6 @@ class GeminiLogReader:
                             content = msg.get("content", "").strip()
                             if content:
                                 content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
-                                # Skip duplicates (same content we've already seen)
                                 if content_hash in seen_hashes:
                                     continue
                                 seen_hashes.add(content_hash)
@@ -432,13 +423,10 @@ class GeminiLogReader:
                                     fast_exit_triggered = True
 
                     if not gemini_contents:
-                        # New messages arrived but no gemini reply yet (only user message)
-                        # Update prev_count and continue waiting
                         prev_count = current_count
                         prev_mtime = current_mtime
                         prev_mtime_ns = current_mtime_ns
                         prev_size = current_size
-                        # Don't update prev_last_gemini_* since we haven't seen a new gemini message
                         if not block:
                             return None, {
                                 "session_path": session,
@@ -463,31 +451,20 @@ class GeminiLogReader:
                         continue
 
                     if gemini_contents:
-                        # Gemini CLI writes messages incrementally: empty -> intermediate -> final.
-                        # It may also write multiple messages in sequence.
-                        #
-                        # Strategy: Wait for [CCB_REPLY_END] marker to confirm completion.
-                        # Only fall back to stability check if marker is not received within timeout.
                         if block and not fast_exit_triggered:
-                            # Wait for [CCB_REPLY_END] marker - this is the authoritative signal
-                            # that Gemini has finished its response (including any tool executions)
-                            # Use the larger of remaining time and 10 minutes as max wait
                             remaining_time = max(0, deadline - time.time())
                             marker_timeout = max(remaining_time, 600.0) if timeout > 0 else 600.0
-                            marker_check_interval = 2.0  # Check every 2 seconds
+                            marker_check_interval = 2.0
                             marker_deadline = time.time() + marker_timeout
 
                             while time.time() < marker_deadline and not fast_exit_triggered:
-                                # Wait for file change or timeout
                                 self._watcher.wait_for_change(session, timeout=marker_check_interval)
                                 try:
                                     with session.open("r", encoding="utf-8") as f2:
                                         data2 = json.load(f2)
                                     messages2 = data2.get("messages", [])
                                     if len(messages2) > current_count:
-                                        # More messages arrived, update state and continue stability check
                                         current_count = len(messages2)
-                                        # Re-collect ALL gemini contents from new messages (from prev_count, not current_count)
                                         gemini_contents = []
                                         seen_hashes = set()
                                         if prev_last_gemini_hash:
@@ -507,18 +484,13 @@ class GeminiLogReader:
                                                         fast_exit_triggered = True
                                         if fast_exit_triggered:
                                             break
-                                        # Keep waiting for more messages or [CCB_REPLY_END] marker
                                         continue
 
-                                    # Check ALL gemini messages for [CCB_REPLY_END] marker (not just the last one)
-                                    # This handles cases where intermediate messages have empty content (only toolCalls)
                                     for msg in messages2[prev_count:]:
                                         if msg.get("type") == "gemini":
                                             content = msg.get("content", "").strip()
                                             if content and "[CCB_REPLY_END]" in content:
-                                                # Found marker in one of the messages
                                                 fast_exit_triggered = True
-                                                # Re-collect all gemini contents
                                                 gemini_contents = []
                                                 seen_hashes = set()
                                                 if prev_last_gemini_hash:
@@ -539,14 +511,12 @@ class GeminiLogReader:
                                     if fast_exit_triggered:
                                         break
 
-                                    # Check if the last gemini message content changed (in-place update)
                                     last2 = self._extract_last_gemini(data2)
                                     if last2:
                                         last2_id, last2_content = last2
                                         if last2_content:
                                             if "[CCB_REPLY_END]" in last2_content:
                                                 fast_exit_triggered = True
-                                                # Update gemini_contents with final content
                                                 if gemini_contents and last_gemini_hash:
                                                     gemini_contents[-1] = last2_content
                                                 last_gemini_id = last2_id
@@ -555,28 +525,21 @@ class GeminiLogReader:
 
                                             last2_hash = hashlib.sha256(last2_content.encode("utf-8")).hexdigest()
                                             if last2_hash != last_gemini_hash:
-                                                # Content changed, update the last item in gemini_contents
                                                 if gemini_contents and last_gemini_hash:
-                                                    # Replace the last content with updated version
                                                     gemini_contents[-1] = last2_content
                                                 last_gemini_id = last2_id
                                                 last_gemini_hash = last2_hash
-                                                # Keep waiting for [CCB_REPLY_END] marker
                                                 continue
-                                    # No changes detected, but keep waiting for [CCB_REPLY_END] marker
-                                    # Don't break here - continue waiting until marker or timeout
                                     continue
                                 except (OSError, json.JSONDecodeError):
                                     break
-                        
-                        # Clean up marker
+
                         cleaned_contents = []
                         for c in gemini_contents:
                             if "[CCB_REPLY_END]" in c:
                                 c = c.replace("[CCB_REPLY_END]", "").replace("[GEMINI_TURN_END]", "").rstrip()
                             cleaned_contents.append(c)
-                            
-                        # Merge all gemini contents with double newline separator
+
                         merged_content = "\n\n".join(cleaned_contents)
                         new_state = {
                             "session_path": session,
@@ -612,9 +575,8 @@ class GeminiLogReader:
                     "last_gemini_hash": prev_last_gemini_hash,
                 }
 
-            # Use watcher for waiting
             self._watcher.wait_for_change(session, timeout=self._poll_interval)
-            
+
             if time.time() >= deadline:
                 return None, {
                     "session_path": session,
@@ -643,64 +605,20 @@ class GeminiLogReader:
         return None
 
 
-class GeminiCommunicator:
+class GeminiCommunicator(BaseCommunicator):
     """Communicate with Gemini via terminal and read replies from session files"""
 
-    def __init__(self, lazy_init: bool = False):
-        self.session_info = self._load_session_info()
-        if not self.session_info:
-            raise RuntimeError("❌ No active Gemini session found, please run ccb up gemini first")
-
-        self.session_id = self.session_info["session_id"]
-        self.runtime_dir = Path(self.session_info["runtime_dir"])
-        self.terminal = self.session_info.get("terminal", "tmux")
-        self.pane_id = get_pane_id_from_session(self.session_info)
-        self.timeout = int(os.environ.get("GEMINI_SYNC_TIMEOUT", "60"))
-        self.marker_prefix = "ask"
-        self.project_session_file = self.session_info.get("_session_file")
-        self.backend = get_backend_for_session(self.session_info)
-
-        # Lazy initialization: defer log reader and health check
-        self._log_reader: Optional[GeminiLogReader] = None
-        self._log_reader_primed = False
-
-        if not lazy_init:
-            self._ensure_log_reader()
-            healthy, msg = self._check_session_health()
-            if not healthy:
-                raise RuntimeError(f"❌ Session unhealthy: {msg}\nHint: Please run ccb up gemini")
+    @property
+    def provider_name(self) -> str:
+        return "Gemini"
 
     @property
-    def log_reader(self) -> GeminiLogReader:
-        """Lazy-load log reader on first access"""
-        if self._log_reader is None:
-            self._ensure_log_reader()
-        return self._log_reader
+    def default_timeout(self) -> int:
+        return int(os.environ.get("GEMINI_SYNC_TIMEOUT", "60"))
 
-    def _ensure_log_reader(self) -> None:
-        """Initialize log reader if not already done"""
-        if self._log_reader is not None:
-            return
-        work_dir_hint = self.session_info.get("work_dir")
-        log_work_dir = Path(work_dir_hint) if isinstance(work_dir_hint, str) and work_dir_hint else None
-        self._log_reader = GeminiLogReader(work_dir=log_work_dir)
-        preferred_session = self.session_info.get("gemini_session_path") or self.session_info.get("session_path")
-        if preferred_session:
-            self._log_reader.set_preferred_session(Path(str(preferred_session)))
-        if not self._log_reader_primed:
-            self._prime_log_binding()
-            self._log_reader_primed = True
-
-    def _prime_log_binding(self) -> None:
-        session_path = self.log_reader.current_session_path()
-        if not session_path:
-            return
-        self._remember_gemini_session(session_path)
-
-    def _load_session_info(self):
+    def _load_session_info(self) -> Optional[Dict[str, Any]]:
         if "GEMINI_SESSION_ID" in os.environ:
             terminal = os.environ.get("GEMINI_TERMINAL", "tmux")
-            # Get correct pane_id based on terminal type
             if terminal == "wezterm":
                 pane_id = os.environ.get("GEMINI_WEZTERM_PANE", "")
             elif terminal == "iterm2":
@@ -737,8 +655,17 @@ class GeminiCommunicator:
         except Exception:
             return None
 
-    def _check_session_health(self) -> Tuple[bool, str]:
-        return self._check_session_health_impl(probe_terminal=True)
+    def _create_log_reader(self) -> GeminiLogReader:
+        work_dir_hint = self.session_info.get("work_dir")
+        log_work_dir = Path(work_dir_hint) if isinstance(work_dir_hint, str) and work_dir_hint else None
+        reader = GeminiLogReader(work_dir=log_work_dir)
+        preferred_session = self.session_info.get("gemini_session_path") or self.session_info.get("session_path")
+        if preferred_session:
+            reader.set_preferred_log(Path(str(preferred_session)))
+        return reader
+
+    def _raise_no_session_error(self):
+        raise RuntimeError("❌ No active Gemini session found, please run ccb up gemini first")
 
     def _check_session_health_impl(self, probe_terminal: bool) -> Tuple[bool, str]:
         try:
@@ -752,100 +679,32 @@ class GeminiCommunicator:
         except Exception as exc:
             return False, f"Check failed: {exc}"
 
-    def _send_via_terminal(self, content: str) -> bool:
+    def _send_payload(self, content: str) -> Tuple[str, Dict[str, Any]]:
         if not self.backend or not self.pane_id:
             raise RuntimeError("Terminal session not configured")
-        self.backend.send_text(self.pane_id, content)
-        return True
-
-    def _send_message(self, content: str) -> Tuple[str, Dict[str, Any]]:
         marker = self._generate_marker()
         state = self.log_reader.capture_state()
-        self._send_via_terminal(content)
+        self.backend.send_text(self.pane_id, content)
         return marker, state
 
-    def _generate_marker(self) -> str:
-        return f"{self.marker_prefix}-{int(time.time())}-{os.getpid()}"
+    def _prime_log_binding(self) -> None:
+        session_path = self.log_reader.current_log_path()
+        if session_path:
+            self._remember_session(session_path)
 
-    def ask_async(self, question: str) -> bool:
+    def _remember_session(self, log_path: Optional[Path]) -> None:
+        if not log_path:
+            return
         try:
-            healthy, status = self._check_session_health_impl(probe_terminal=False)
-            if not healthy:
-                raise RuntimeError(f"❌ Session error: {status}")
+            session_path = log_path if isinstance(log_path, Path) else Path(str(log_path)).expanduser()
+        except Exception:
+            return
+        if not session_path.exists():
+            return
 
-            self._send_via_terminal(question)
-            print(f"✅ Sent to Gemini")
-            print("Hint: Use gpend to view reply")
-            return True
-        except Exception as exc:
-            print(f"❌ Send failed: {exc}")
-            return False
+        self.log_reader.set_preferred_log(session_path)
 
-    def ask_sync(self, question: str, timeout: Optional[int] = None) -> Optional[str]:
-        try:
-            healthy, status = self._check_session_health_impl(probe_terminal=False)
-            if not healthy:
-                raise RuntimeError(f"❌ Session error: {status}")
-
-            print(f"🔔 {t('sending_to', provider='Gemini')}", flush=True)
-            self._send_via_terminal(question)
-            # Capture state after sending to reduce "question → send" latency.
-            state = self.log_reader.capture_state()
-            notify.notify_waiting("Gemini")
-
-            wait_timeout = self.timeout if timeout is None else int(timeout)
-            if wait_timeout == 0:
-                print(f"⏳ {t('waiting_for_reply', provider='Gemini')}", flush=True)
-                start_time = time.time()
-                last_hint = 0
-                while True:
-                    message, new_state = self.log_reader.wait_for_message(state, timeout=30.0)
-                    state = new_state if new_state else state
-                    session_path = (new_state or {}).get("session_path") if isinstance(new_state, dict) else None
-                    if isinstance(session_path, Path):
-                        self._remember_gemini_session(session_path)
-                    if message:
-                        notify.notify_reply_received("Gemini", message)
-                        print(f"🤖 {t('reply_from', provider='Gemini')}")
-                        print(message)
-                        return message
-                    elapsed = int(time.time() - start_time)
-                    if elapsed >= last_hint + 30:
-                        last_hint = elapsed
-                        print(f"⏳ Still waiting... ({elapsed}s)")
-
-            print(f"⏳ Waiting for Gemini reply (timeout {wait_timeout}s)...")
-            message, new_state = self.log_reader.wait_for_message(state, float(wait_timeout))
-            session_path = (new_state or {}).get("session_path") if isinstance(new_state, dict) else None
-            if isinstance(session_path, Path):
-                self._remember_gemini_session(session_path)
-            if message:
-                notify.notify_reply_received("Gemini", message)
-                print(f"🤖 {t('reply_from', provider='Gemini')}")
-                print(message)
-                return message
-
-            print(f"⏰ {t('timeout_no_reply', provider='Gemini')}")
-            return None
-        except Exception as exc:
-            print(f"❌ Sync ask failed: {exc}")
-            return None
-
-    def consume_pending(self, display: bool = True):
-        session_path = self.log_reader.current_session_path()
-        if isinstance(session_path, Path):
-            self._remember_gemini_session(session_path)
-        message = self.log_reader.latest_message()
-        if not message:
-            if display:
-                print(t('no_reply_available', provider='Gemini'))
-            return None
-        if display:
-            print(message)
-        return message
-
-    def _remember_gemini_session(self, session_path: Path) -> None:
-        if not session_path or not self.project_session_file:
+        if not self.project_session_file:
             return
         project_file = Path(self.project_session_file)
         if not project_file.exists():
@@ -906,23 +765,11 @@ class GeminiCommunicator:
             except Exception:
                 pass
 
-    def ping(self, display: bool = True) -> Tuple[bool, str]:
-        healthy, status = self._check_session_health()
-        msg = f"✅ Gemini connection OK ({status})" if healthy else f"❌ Gemini connection error: {status}"
-        if display:
-            print(msg)
-        return healthy, msg
-
-    def get_status(self) -> Dict[str, Any]:
-        healthy, status = self._check_session_health()
-        return {
-            "session_id": self.session_id,
-            "runtime_dir": str(self.runtime_dir),
-            "terminal": self.terminal,
-            "pane_id": self.pane_id,
-            "healthy": healthy,
-            "status": status,
-        }
+        self.session_info["gemini_session_path"] = session_path_str
+        if project_hash:
+            self.session_info["gemini_project_hash"] = project_hash
+        if session_id:
+            self.session_info["gemini_session_id"] = session_id
 
 
 def main() -> int:
