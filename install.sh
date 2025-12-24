@@ -90,6 +90,7 @@ SCRIPTS_TO_LINK=(
   bin/gask-w
   bin/gpend
   bin/gping
+  bin/ccb-ask
   ccb
 )
 

@@ -46,6 +46,7 @@ from doctor import run_diagnostics
 from init_wizard import run_init_wizard
 from output import init_output, is_quiet, is_json, is_debug, print_msg, print_error, print_debug, print_debug_exception, set_output, add_to_list, flush_json
 from errors import ExitCode, format_error, print_error_and_exit
+from broadcast import parallel_ask, format_results, cmd_ask
 
 setup_windows_encoding()
 
@@ -64,6 +65,14 @@ Session Commands:
   status [providers]  Check backend status
   kill [providers]    Terminate running sessions
   restore [providers] Restore/attach to existing session
+
+Communication Commands:
+  ask [message]       Send message to AI providers in parallel
+                      -p, --providers Comma-separated providers (default: all)
+                      -a, --all       Send to all providers
+                      -w, --wait      Wait for replies (default)
+                      --no-wait       Fire and forget mode
+                      -t, --timeout   Timeout in seconds (0=unlimited)
 
 System Commands:
   init                Interactive configuration wizard
@@ -572,6 +581,15 @@ def main():
     # examples subcommand
     subparsers.add_parser("examples", help="Show detailed usage examples")
 
+    # ask subcommand
+    ask_parser = subparsers.add_parser("ask", help="Send message to AI providers in parallel")
+    ask_parser.add_argument("message", nargs="*", help="Message to send")
+    ask_parser.add_argument("-p", "--providers", type=str, help="Comma-separated providers (codex,gemini)")
+    ask_parser.add_argument("-a", "--all", action="store_true", help="Send to all providers")
+    ask_parser.add_argument("-w", "--wait", action="store_true", default=True, help="Wait for replies (default)")
+    ask_parser.add_argument("--no-wait", action="store_true", help="Fire and forget mode")
+    ask_parser.add_argument("-t", "--timeout", type=int, default=0, help="Timeout in seconds (0=unlimited)")
+
     argv = sys.argv[1:]
     # Backward/shortcut compatibility
     if argv and argv[0] in {"-r", "--resume", "--restore"}:
@@ -613,6 +631,11 @@ def main():
         return cmd_completion(args)
     elif args.command == "examples":
         return cmd_examples(args)
+    elif args.command == "ask":
+        # Handle --no-wait flag
+        if getattr(args, "no_wait", False):
+            args.wait = False
+        return cmd_ask(args)
     else:
         if not is_json():
             print_custom_help()
