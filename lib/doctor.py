@@ -79,16 +79,12 @@ def check_terminal_backend() -> DiagnosticCheck:
         elif Path("/Applications/iTerm.app").exists():
             backends.append("iTerm2 (it2 CLI not installed)")
 
-    # Check tmux
-    if shutil.which("tmux"):
-        backends.append("tmux")
-
     if backends:
         check.pass_check(", ".join(backends))
     else:
         check.fail_check(
             "No terminal backend found",
-            "Install one of: WezTerm (recommended), iTerm2 (macOS), or tmux"
+            "Install one of: WezTerm (recommended) or iTerm2 (macOS)"
         )
 
     return check

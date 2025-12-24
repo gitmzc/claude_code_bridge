@@ -1,65 +1,38 @@
 <div align="center">
 
-# Claude Code Bridge (ccb) v2.2
+# Claude Code Bridge (ccb) v3.0
 
-**🌍 Cross-Platform Multi-AI Collaboration: Claude + Codex + Gemini**
+**Multi-AI Collaboration: Claude + Codex + Gemini**
 
 **Windows | macOS | Linux — One Tool, All Platforms**
 
-[![Version](https://img.shields.io/badge/version-2.2-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-3.0-orange.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 [English](#english) | [中文](#中文)
 
-<img src="assets/demo.webp" alt="Dual-pane demo (animated)" width="900">
-
-<p>
-  <a href="https://github.com/bfly123/claude_code_bridge/releases/tag/2.0">Full demo video (GitHub Release)</a>
-</p>
+<img src="assets/demo.webp" alt="Dual-pane demo" width="900">
 
 </div>
 
 ---
 
-## 🎉 What's New in v2.2
-
-> **🛠️ CLI Improvements & Better Diagnostics**
-
-- **📋 Improved Help** — Grouped commands with examples (`ccb --help`)
-- **🔍 Debug Mode** — `--debug` flag for troubleshooting
-- **📊 JSON Output** — `--json` for machine-readable output
-- **🤫 Quiet Mode** — `-q/--quiet` for minimal output
-- **🩺 System Diagnostics** — `ccb doctor` to check your setup
-- **⚙️ Config Wizard** — `ccb init` for interactive configuration
-- **📖 Examples** — `ccb examples` for detailed usage examples
-- **📜 Conversation History** — `cpend N` / `gpend N` to view recent N Q&A pairs
-- **⚡ WezTerm Optimization** — Dual-path strategy for faster text sending
-- **🪟 Windows GBK Fix** — Better encoding handling for Chinese Windows
-
----
-
-## 🎉 What's New in v2.1
-
-> **🪟 Full Windows Support via [WezTerm](https://wezfurlong.org/wezterm/)**
-> WezTerm is now the recommended terminal for all platforms. It's a powerful, cross-platform terminal with native split-pane support. Linux/macOS users: give it a try! tmux remains supported.
-
-- **⚡ Faster Response** — Optimized send/receive latency, significantly faster than MCP
-- **🐛 macOS Fixes** — Fixed session resume and various login issues
-- **🔄 Easy Updates** — Run `ccb update` instead of re-cloning
-
-> Found a bug? Run `claude` in the project directory to debug, then share your `git diff` with the maintainer!
-
----
-
 # English
+
+## What's New in v3.0
+
+> **Simplified Architecture**
+
+- **Removed tmux support** — Now uses WezTerm/iTerm2 only for cleaner, more reliable communication
+- **Removed FIFO bridge** — Direct terminal injection for all platforms
+- **Unified codebase** — Same communication pattern for Codex and Gemini
 
 ## Why This Project?
 
 Traditional MCP calls treat Codex as a **stateless executor**—Claude must feed full context every time.
 
-**ccb (Claude Code Bridge)** establishes a **persistent, lightweight channel** for sending/receiving small messages while each AI maintains its own context.
+**ccb** establishes a **persistent, lightweight channel** for sending/receiving small messages while each AI maintains its own context.
 
 ### Division of Labor
 
@@ -70,34 +43,22 @@ Traditional MCP calls treat Codex as a **stateless executor**—Claude must feed
 | **Gemini** | Research, alternative perspectives, verification |
 | **ccb** | Session management, context isolation, communication bridge |
 
-### Official MCP vs Persistent Dual-Pane
+### MCP vs Persistent Dual-Pane
 
-| Aspect | MCP (Official) | Persistent Dual-Pane |
-|--------|----------------|----------------------|
+| Aspect | MCP | Persistent Dual-Pane |
+|--------|-----|----------------------|
 | Codex State | Stateless | Persistent session |
 | Context | Passed from Claude | Self-maintained |
-| Token Cost | 5k-20k/call | 50-200/call (much faster) |
+| Token Cost | 5k-20k/call | 50-200/call |
 | Work Mode | Master-slave | Parallel |
 | Recovery | Not possible | Supported (`-r`) |
-| Multi-AI | Single target | Multiple backends |
 
-> **Prefer MCP?** Check out [CodexMCP](https://github.com/GuDaStudio/codexmcp) — a more powerful MCP implementation with session context and multi-turn support.
+## Requirements
 
-<details>
-<summary><b>Token Savings Explained</b></summary>
+- Python 3.10+
+- **WezTerm** (recommended, cross-platform) or **iTerm2** (macOS only)
 
-```
-MCP approach:
-  Claude → [full code + history + instructions] → Codex
-  Cost: 5,000-20,000 tokens/call
-
-Dual-pane approach (only sends/receives small messages):
-  Claude → "optimize utils.py" → Codex
-  Cost: 50-200 tokens/call
-  (Codex reads the file itself)
-```
-
-</details>
+> **Windows Users:** Install WezTerm using the native Windows .exe installer from [wezfurlong.org/wezterm](https://wezfurlong.org/wezterm/), even if you use WSL.
 
 ## Install
 
@@ -109,23 +70,10 @@ cd claude_code_bridge
 
 ### Windows
 
-- **WSL2 (recommended):** run the same commands inside WSL.
-- **Native Windows (PowerShell/CMD):** use the wrappers:
-  - `install.cmd install`
-  - or `powershell -ExecutionPolicy Bypass -File .\\install.ps1 install` (you will be prompted for `BackendEnv`)
-- **WezTerm-only (no tmux):** run `ccb` inside WezTerm, or set `CCB_TERMINAL=wezterm` (and if needed `CODEX_WEZTERM_BIN` to `wezterm.exe`).
+- **WSL2 (recommended):** run the same commands inside WSL
+- **Native Windows:** use `install.cmd install` or `powershell -ExecutionPolicy Bypass -File .\install.ps1 install`
 
-### BackendEnv (Important for Windows/WSL)
-
-ccb and codex/gemini must run in the same environment. Otherwise you may see:
-- `exit code 127` (command not found)
-- `cpend`/`gpend` cannot find replies (different session directories)
-
-Install-time selection is persisted to `ccb_config.json` (or override with `CCB_BACKEND_ENV`):
-- `BackendEnv=wsl`: codex/gemini runs in WSL (recommended if you type `codex` inside a WSL shell).
-- `BackendEnv=windows`: codex/gemini runs as native Windows CLI.
-
-## Start
+## Quick Start
 
 ```bash
 ccb up codex            # Start with Codex
@@ -141,42 +89,11 @@ ccb up codex -a         # Full permissions mode
 ccb status              # Check backend status
 ccb kill codex          # Terminate session
 ccb restore codex       # Attach to running session
+ccb doctor              # Diagnose issues
 ccb update              # Update to latest version
 ```
 
-> `-a` enables `--dangerously-skip-permissions` for Claude and `--full-auto` for Codex.  
-> `-r` resumes based on local dotfiles in the current directory (`.claude-session`, `.codex-session`, `.gemini-session`); delete them to reset.
-
-## Usage Examples
-
-### Practical Workflows
-- "Have Codex review my code changes"
-- "Ask Gemini for alternative approaches"
-- "Codex plans the refactoring, supervises while I implement"
-- "Codex writes backend API, I handle frontend"
-
-### Fun & Creative
-
-> **🎴 Featured: AI Poker Night!**
-> ```
-> "Let Claude, Codex and Gemini play Dou Di Zhu (斗地主)!
->  You deal the cards, everyone plays open hand!"
->
->  🃏 Claude (Landlord)  vs  🎯 Codex + 💎 Gemini (Farmers)
-> ```
-
-- "Play Gomoku with Codex"
-- "Debate: tabs vs spaces"
-- "Codex writes a function, Claude finds the bugs"
-
-### Advanced
-- "Codex designs architecture, Claude implements modules"
-- "Parallel code review from different angles"
-- "Codex implements, Gemini reviews, Claude coordinates"
-
-## Commands (For Developers)
-
-> Most users don't need these—Claude auto-detects collaboration intent.
+## Commands
 
 **Codex:**
 
@@ -185,7 +102,7 @@ ccb update              # Update to latest version
 | `cask-w <msg>` | Sync: wait for reply |
 | `cask <msg>` | Async: fire-and-forget |
 | `cpend` | Show latest reply |
-| `cpend N` | Show last N Q&A pairs (e.g., `cpend 3`) |
+| `cpend N` | Show last N Q&A pairs |
 | `cping` | Connectivity check |
 
 **Gemini:**
@@ -195,15 +112,8 @@ ccb update              # Update to latest version
 | `gask-w <msg>` | Sync: wait for reply |
 | `gask <msg>` | Async: fire-and-forget |
 | `gpend` | Show latest reply |
-| `gpend N` | Show last N Q&A pairs (e.g., `gpend 5`) |
+| `gpend N` | Show last N Q&A pairs |
 | `gping` | Connectivity check |
-
-## Requirements
-
-- Python 3.10+
-- tmux or WezTerm (at least one; WezTerm recommended)
-
-> **⚠️ Windows Users:** Always install WezTerm using the **native Windows .exe installer** from [wezfurlong.org/wezterm](https://wezfurlong.org/wezterm/), even if you use WSL. Do NOT install WezTerm inside WSL. After installation, configure WezTerm to connect to WSL via `wsl.exe` as the default shell. This ensures proper split-pane functionality.
 
 ## Uninstall
 
@@ -215,57 +125,19 @@ ccb update              # Update to latest version
 
 # 中文
 
-## 🎉 v2.2 新特性
+## v3.0 新特性
 
-> **🛠️ CLI 改进与更好的诊断功能**
+> **简化架构**
 
-- **📋 改进的帮助** — 分组显示命令和示例 (`ccb --help`)
-- **🔍 调试模式** — `--debug` 选项用于故障排查
-- **📊 JSON 输出** — `--json` 用于机器可读输出
-- **🤫 静默模式** — `-q/--quiet` 最小化输出
-- **🩺 系统诊断** — `ccb doctor` 检查环境配置
-- **⚙️ 配置向导** — `ccb init` 交互式配置
-- **📖 使用示例** — `ccb examples` 详细使用示例
-- **📜 对话历史** — `cpend N` / `gpend N` 查看最近 N 个问答对
-- **⚡ WezTerm 优化** — 双路径策略加速文本发送
-- **🪟 Windows GBK 修复** — 改进中文 Windows 编码处理
-
----
-
-## 🎉 v2.1 新特性
-
-> **🪟 全面支持 Windows — 通过 [WezTerm](https://wezfurlong.org/wezterm/)**
-> WezTerm 现已成为所有平台的推荐终端。它是一个强大的跨平台终端，原生支持分屏。Linux/macOS 用户也推荐使用！当然短期tmux仍然支持。
-
-- **⚡ 响应更快** — 优化了发送/接收延迟，显著快于 MCP
-- **🐛 macOS 修复** — 修复了会话恢复和各种登录问题
-- **🔄 一键更新** — 运行 `ccb update` 即可更新，无需重新拉取安装
-
-> 发现 bug？在项目目录运行 `claude` 调试，然后将 `git diff` 发给作者更新到主分支！
-
----
-
-## 界面截图
-
-<div align="center">
-  <img src="assets/figure.png" alt="双窗口协作界面" width="900">
-</div>
-
-<div align="center">
-  <img src="assets/demo.webp" alt="动图预览" width="900">
-</div>
-
-<div align="center">
-  <a href="https://github.com/bfly123/claude_code_bridge/releases/tag/2.0">完整演示视频（GitHub Release）</a>
-</div>
-
----
+- **移除 tmux 支持** — 现在仅使用 WezTerm/iTerm2，通信更简洁可靠
+- **移除 FIFO 桥接** — 所有平台统一使用终端直接注入
+- **统一代码库** — Codex 和 Gemini 使用相同的通信模式
 
 ## 为什么需要这个项目？
 
 传统 MCP 调用把 Codex 当作**无状态执行器**——Claude 每次都要传递完整上下文。
 
-**ccb (Claude Code Bridge)** 建立**持久通道** 轻量级发送和抓取信息， AI间各自维护独立上下文。
+**ccb** 建立**持久通道**，轻量级发送和抓取信息，AI 间各自维护独立上下文。
 
 ### 分工协作
 
@@ -276,34 +148,22 @@ ccb update              # Update to latest version
 | **Gemini** | 研究、多角度分析、验证 |
 | **ccb** | 会话管理、上下文隔离、通信桥接 |
 
-### 官方 MCP vs 持久双窗口
+### MCP vs 持久双窗口
 
-| 维度 | MCP（官方方案） | 持久双窗口 |
-|------|----------------|-----------|
+| 维度 | MCP | 持久双窗口 |
+|------|-----|-----------|
 | Codex 状态 | 无记忆 | 持久会话 |
 | 上下文 | Claude 传递 | 各自维护 |
-| Token 消耗 | 5k-20k/次 | 50-200/次（速度显著提升） |
+| Token 消耗 | 5k-20k/次 | 50-200/次 |
 | 工作模式 | 主从 | 并行协作 |
 | 会话恢复 | 不支持 | 支持 (`-r`) |
-| 多AI | 单目标 | 多后端 |
 
-> **偏好 MCP？** 推荐 [CodexMCP](https://github.com/GuDaStudio/codexmcp) — 更强大的 MCP 实现，支持会话上下文和多轮对话。
+## 依赖
 
-<details>
-<summary><b>Token 节省原理</b></summary>
+- Python 3.10+
+- **WezTerm**（推荐，跨平台）或 **iTerm2**（仅 macOS）
 
-```
-MCP 方式：
-  Claude → [完整代码 + 历史 + 指令] → Codex
-  消耗：5,000-20,000 tokens/次
-
-双窗口方式（每次仅发送和抓取少量信息）：
-  Claude → "优化 utils.py" → Codex
-  消耗：50-200 tokens/次
-  (Codex 自己读取文件)
-```
-
-</details>
+> **Windows 用户：** 必须使用 Windows 原生 .exe 安装包安装 WezTerm（[下载地址](https://wezfurlong.org/wezterm/)），即使使用 WSL 也是如此。
 
 ## 安装
 
@@ -315,26 +175,10 @@ cd claude_code_bridge
 
 ### Windows
 
-- **推荐 WSL2：** 在 WSL 内执行上面的命令即可。
-- **原生 Windows（PowerShell/CMD）：** 使用包装脚本：
-  - `install.cmd install`
-  - 或 `powershell -ExecutionPolicy Bypass -File .\\install.ps1 install`（会提示选择 `BackendEnv`）
-- **仅 WezTerm（无 tmux）：** 建议在 WezTerm 中运行 `ccb`，或设置 `CCB_TERMINAL=wezterm`（必要时设置 `CODEX_WEZTERM_BIN=wezterm.exe`）。
+- **推荐 WSL2：** 在 WSL 内执行上面的命令
+- **原生 Windows：** 使用 `install.cmd install` 或 `powershell -ExecutionPolicy Bypass -File .\install.ps1 install`
 
-### BackendEnv（Windows/WSL 必看）
-
-`ccb/cask-w` 必须和 `codex/gemini` 在同一环境运行，否则可能出现：
-- `exit code 127`（找不到命令）
-- `cpend/gpend` 读不到回复（会话目录不同）
-
-安装时的选择会写入 `ccb_config.json`（也可用环境变量 `CCB_BACKEND_ENV` 覆盖）：
-- `BackendEnv=wsl`：codex/gemini 安装并运行在 WSL（如果你是在 WSL 里直接输入 `codex` 的场景，推荐选这个）
-- `BackendEnv=windows`：codex/gemini 为 Windows 原生 CLI
-
-
-
-
-## 启动
+## 快速开始
 
 ```bash
 ccb up codex            # 启动 Codex
@@ -350,42 +194,11 @@ ccb up codex -a         # 最高权限模式
 ccb status              # 检查后端状态
 ccb kill codex          # 终止会话
 ccb restore codex       # 连接到运行中的会话
+ccb doctor              # 诊断问题
 ccb update              # 更新到最新版本
 ```
 
-> `-a` 为 Claude 启用 `--dangerously-skip-permissions`，Codex 启用 `--full-auto`。  
-> `-r` 基于当前目录下的本地文件恢复（`.claude-session/.codex-session/.gemini-session`）；删除这些文件即可重置。
-
-## 使用示例
-
-### 实用场景
-- "让 Codex 审查我的代码修改"
-- "问问 Gemini 有没有其他方案"
-- "Codex 规划重构方案，我来实现它监督"
-- "Codex 写后端 API，我写前端"
-
-### 趣味玩法
-
-> **🎴 特色玩法：AI 棋牌之夜！**
-> ```
-> "让 Claude、Codex 和 Gemini 来一局斗地主！
->  你来发牌，大家明牌玩！"
->
->  🃏 Claude (地主)  vs  🎯 Codex + 💎 Gemini (农民)
-> ```
-
-- "和 Codex 下五子棋"
-- "辩论：Tab vs 空格"
-- "Codex 写函数，Claude 找 bug"
-
-### 进阶工作流
-- "Codex 设计架构，Claude 实现各模块"
-- "两个 AI 从不同角度并行 Code Review"
-- "Codex 实现，Gemini 审查，Claude 协调"
-
-## 命令（开发者使用）
-
-> 普通用户无需使用这些命令——Claude 会自动检测协作意图。
+## 命令
 
 **Codex:**
 
@@ -394,7 +207,7 @@ ccb update              # 更新到最新版本
 | `cask-w <消息>` | 同步：等待回复 |
 | `cask <消息>` | 异步：发送即返回 |
 | `cpend` | 查看最新回复 |
-| `cpend N` | 查看最近 N 个问答对（如 `cpend 3`） |
+| `cpend N` | 查看最近 N 个问答对 |
 | `cping` | 测试连通性 |
 
 **Gemini:**
@@ -404,15 +217,8 @@ ccb update              # 更新到最新版本
 | `gask-w <消息>` | 同步：等待回复 |
 | `gask <消息>` | 异步：发送即返回 |
 | `gpend` | 查看最新回复 |
-| `gpend N` | 查看最近 N 个问答对（如 `gpend 5`） |
+| `gpend N` | 查看最近 N 个问答对 |
 | `gping` | 测试连通性 |
-
-## 依赖
-
-- Python 3.10+
-- tmux 或 WezTerm（至少安装一个），强烈推荐 WezTerm
-
-> **⚠️ Windows 用户注意：** 必须使用 **Windows 原生 .exe 安装包** 安装 WezTerm（[下载地址](https://wezfurlong.org/wezterm/)），即使你使用 WSL 也是如此。**不要在 WSL 内部安装 WezTerm**。安装完成后，可在 WezTerm 设置中将默认 shell 配置为 `wsl.exe`，即可无缝接入 WSL 环境，同时保证分屏功能正常工作。
 
 ## 卸载
 
@@ -423,10 +229,6 @@ ccb update              # 更新到最新版本
 ---
 
 <div align="center">
-
-**WSL2 supported** | WSL1 not supported (FIFO limitation)
-
----
 
 **测试用户群，欢迎大佬们**
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Codex communication module (log-driven version)
-Sends requests via FIFO and parses replies from ~/.codex/sessions logs.
+Sends requests via terminal injection and parses replies from ~/.codex/sessions logs.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ import os
 import re
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any, List
 
@@ -279,7 +278,7 @@ class CodexLogReader(BaseLogReader):
 
 
 class CodexCommunicator(BaseCommunicator):
-    """Communicates with Codex bridge via FIFO and reads replies from logs"""
+    """Communicates with Codex via terminal injection and reads replies from logs"""
     
     @property
     def provider_name(self) -> str:
@@ -292,20 +291,17 @@ class CodexCommunicator(BaseCommunicator):
 
     def _load_session_info(self) -> Optional[Dict[str, Any]]:
         if "CODEX_SESSION_ID" in os.environ:
-            terminal = os.environ.get("CODEX_TERMINAL", "tmux")
+            terminal = os.environ.get("CODEX_TERMINAL", "wezterm")
             pane_id = ""
             if terminal == "wezterm":
                 pane_id = os.environ.get("CODEX_WEZTERM_PANE", "")
             elif terminal == "iterm2":
                 pane_id = os.environ.get("CODEX_ITERM2_PANE", "")
-            
+
             return {
                 "session_id": os.environ["CODEX_SESSION_ID"],
-                "runtime_dir": os.environ["CODEX_RUNTIME_DIR"],
-                "input_fifo": os.environ["CODEX_INPUT_FIFO"],
-                "output_fifo": os.environ.get("CODEX_OUTPUT_FIFO", ""),
+                "runtime_dir": os.environ.get("CODEX_RUNTIME_DIR", ""),
                 "terminal": terminal,
-                "tmux_session": os.environ.get("CODEX_TMUX_SESSION", ""),
                 "pane_id": pane_id,
                 "_session_file": None,
             }
@@ -336,57 +332,23 @@ class CodexCommunicator(BaseCommunicator):
 
     def _check_session_health_impl(self, probe_terminal: bool) -> Tuple[bool, str]:
         try:
-            if not self.runtime_dir.exists():
-                return False, "Runtime directory does not exist"
-
-            # WezTerm/iTerm2 mode
-            if self.terminal in ("wezterm", "iterm2"):
-                if not self.pane_id:
-                    return False, f"{self.terminal} pane_id not found"
-                if probe_terminal and (not self.backend or not self.backend.is_alive(self.pane_id)):
-                    return False, f"{self.terminal} pane does not exist: {self.pane_id}"
-                return True, "Session healthy"
-
-            # tmux mode
-            codex_pid_file = self.runtime_dir / "codex.pid"
-            if not codex_pid_file.exists():
-                return False, "Codex process PID file not found"
-            
-            # Simple pid check
-            try:
-                with open(codex_pid_file, "r") as f:
-                    os.kill(int(f.read().strip()), 0)
-            except (ValueError, OSError):
-                return False, "Codex process has exited"
-
-            input_fifo = Path(self.session_info["input_fifo"])
-            if not input_fifo.exists():
-                return False, "Communication pipe does not exist"
-
+            if not self.pane_id:
+                return False, f"{self.terminal} pane_id not found"
+            if probe_terminal and (not self.backend or not self.backend.is_alive(self.pane_id)):
+                return False, f"{self.terminal} pane does not exist: {self.pane_id}"
             return True, "Session healthy"
         except Exception as exc:
             return False, f"Health check failed: {exc}"
 
     def _send_payload(self, content: str) -> Tuple[str, Dict[str, Any]]:
         marker = f"ask-{int(time.time())}-{os.getpid()}"
-        message = {
-            "content": content,
-            "timestamp": datetime.now().isoformat(),
-            "marker": marker,
-        }
 
         # Capture state BEFORE sending to ensure we don't miss immediate replies
         state = self.log_reader.capture_state()
 
-        if self.terminal in ("wezterm", "iterm2"):
-            if not self.backend or not self.pane_id:
-                raise RuntimeError("Terminal session not configured")
-            self.backend.send_text(self.pane_id, content)
-        else:
-            fifo_path = Path(self.session_info["input_fifo"])
-            with open(fifo_path, "w", encoding="utf-8") as fifo:
-                fifo.write(json.dumps(message, ensure_ascii=False) + "\n")
-                fifo.flush()
+        if not self.backend or not self.pane_id:
+            raise RuntimeError("Terminal session not configured")
+        self.backend.send_text(self.pane_id, content)
 
         return marker, state
 

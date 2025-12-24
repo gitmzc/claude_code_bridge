@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Gemini communication module
-Supports tmux and WezTerm terminals, reads replies from ~/.gemini/tmp/<hash>/chats/session-*.json
+Supports WezTerm and iTerm2 terminals, reads replies from ~/.gemini/tmp/<hash>/chats/session-*.json
 """
 
 from __future__ import annotations
@@ -618,7 +618,7 @@ class GeminiCommunicator(BaseCommunicator):
 
     def _load_session_info(self) -> Optional[Dict[str, Any]]:
         if "GEMINI_SESSION_ID" in os.environ:
-            terminal = os.environ.get("GEMINI_TERMINAL", "tmux")
+            terminal = os.environ.get("GEMINI_TERMINAL", "wezterm")
             if terminal == "wezterm":
                 pane_id = os.environ.get("GEMINI_WEZTERM_PANE", "")
             elif terminal == "iterm2":
@@ -627,9 +627,8 @@ class GeminiCommunicator(BaseCommunicator):
                 pane_id = ""
             return {
                 "session_id": os.environ["GEMINI_SESSION_ID"],
-                "runtime_dir": os.environ["GEMINI_RUNTIME_DIR"],
+                "runtime_dir": os.environ.get("GEMINI_RUNTIME_DIR", ""),
                 "terminal": terminal,
-                "tmux_session": os.environ.get("GEMINI_TMUX_SESSION", ""),
                 "pane_id": pane_id,
                 "_session_file": None,
             }

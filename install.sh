@@ -246,40 +246,6 @@ confirm_backend_env_wsl() {
   esac
 }
 
-print_tmux_install_hint() {
-  local platform
-  platform="$(detect_platform)"
-  case "$platform" in
-    macos)
-      if command -v brew >/dev/null 2>&1; then
-        echo "   macOS: Run 'brew install tmux'"
-      else
-        echo "   macOS: Homebrew not detected, install from https://brew.sh then run 'brew install tmux'"
-      fi
-      ;;
-    linux)
-      if command -v apt-get >/dev/null 2>&1; then
-        echo "   Debian/Ubuntu: sudo apt-get update && sudo apt-get install -y tmux"
-      elif command -v dnf >/dev/null 2>&1; then
-        echo "   Fedora/CentOS/RHEL: sudo dnf install -y tmux"
-      elif command -v yum >/dev/null 2>&1; then
-        echo "   CentOS/RHEL: sudo yum install -y tmux"
-      elif command -v pacman >/dev/null 2>&1; then
-        echo "   Arch/Manjaro: sudo pacman -S tmux"
-      elif command -v apk >/dev/null 2>&1; then
-        echo "   Alpine: sudo apk add tmux"
-      elif command -v zypper >/dev/null 2>&1; then
-        echo "   openSUSE: sudo zypper install -y tmux"
-      else
-        echo "   Linux: Please use your distro's package manager to install tmux"
-      fi
-      ;;
-    *)
-      echo "   See https://github.com/tmux/tmux/wiki/Installing for tmux installation"
-      ;;
-  esac
-}
-
 # Detect if running in iTerm2 environment
 is_iterm2_environment() {
   # Check ITERM_SESSION_ID environment variable
@@ -384,21 +350,15 @@ require_terminal_backend() {
         return
       fi
     else
-      echo "Skipping it2 installation, will use tmux as fallback"
+      echo "Skipping it2 installation"
     fi
-  fi
-
-  # 3. If running in tmux environment
-  if [[ -n "${TMUX:-}" ]]; then
-    echo "✓ Detected tmux environment"
-    return
   fi
 
   # ============================================
   # Not in specific environment, detect by availability
   # ============================================
 
-  # 4. Check WezTerm environment variable override
+  # 3. Check WezTerm environment variable override
   if [[ -n "${wezterm_override}" ]]; then
     if command -v "${wezterm_override}" >/dev/null 2>&1 || [[ -f "${wezterm_override}" ]]; then
       echo "✓ Detected WezTerm (${wezterm_override})"
@@ -406,7 +366,7 @@ require_terminal_backend() {
     fi
   fi
 
-  # 5. Check WezTerm command
+  # 4. Check WezTerm command
   if command -v wezterm >/dev/null 2>&1 || command -v wezterm.exe >/dev/null 2>&1; then
     echo "✓ Detected WezTerm"
     return
@@ -424,20 +384,14 @@ require_terminal_backend() {
     fi
   fi
 
-  # 6. Check it2 CLI
+  # 5. Check it2 CLI
   if command -v it2 >/dev/null 2>&1; then
     echo "✓ Detected it2 CLI"
     return
   fi
 
-  # 7. Check tmux
-  if command -v tmux >/dev/null 2>&1; then
-    echo "✓ Detected tmux (recommend also installing WezTerm for better experience)"
-    return
-  fi
-
-  # 8. No terminal multiplexer found
-  echo "❌ Missing dependency: WezTerm, tmux or it2 (at least one required)"
+  # 6. No terminal multiplexer found
+  echo "❌ Missing dependency: WezTerm or it2 (at least one required)"
   echo "   WezTerm website: https://wezfurlong.org/wezterm/"
 
   # Extra hint for macOS users about iTerm2 + it2
@@ -445,10 +399,9 @@ require_terminal_backend() {
     echo
     echo "💡 macOS user recommended options:"
     echo "   - If using iTerm2, install it2 CLI: pip3 install it2"
-    echo "   - Or install tmux: brew install tmux"
+    echo "   - Or install WezTerm: brew install --cask wezterm"
   fi
 
-  print_tmux_install_hint
   exit 1
 }
 
@@ -669,7 +622,7 @@ install_claude_md_config() {
   cat > "$ccb_tmpfile" << 'AI_RULES'
 <!-- CCB_CONFIG_START -->
 ## Codex Collaboration Rules
-Codex is another AI assistant running in a separate terminal session (WezTerm, iTerm2 or tmux). When user intent involves asking/consulting/collaborating with Codex:
+Codex is another AI assistant running in a separate terminal session (WezTerm or iTerm2). When user intent involves asking/consulting/collaborating with Codex:
 
 Fast path (minimize latency):
 - If the user message starts with any of: `@codex`, `codex:`, `ask codex`, `let codex`, `/cask-w` then immediately run:
@@ -706,7 +659,7 @@ Examples:
 - "show last 3 conversations" -> cpend 3
 
 ## Gemini Collaboration Rules
-Gemini is another AI assistant running in a separate terminal session (WezTerm, iTerm2 or tmux). When user intent involves asking/consulting/collaborating with Gemini:
+Gemini is another AI assistant running in a separate terminal session (WezTerm or iTerm2). When user intent involves asking/consulting/collaborating with Gemini:
 
 Fast path (minimize latency):
 - If the user message starts with any of: `@gemini`, `gemini:`, `ask gemini`, `let gemini`, `/gask-w` then immediately run:
@@ -1040,7 +993,7 @@ uninstall_all() {
   uninstall_settings_permissions
 
   echo "✅ Uninstall complete"
-  echo "   💡 Note: Dependencies (python3, tmux, wezterm, it2) were not removed"
+  echo "   💡 Note: Dependencies (python3, wezterm, it2) were not removed"
 }
 
 main() {

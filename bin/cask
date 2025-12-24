@@ -23,13 +23,12 @@ def _usage() -> None:
 
 
 def _load_session() -> Optional[dict]:
-    env_session = os.environ.get("CODEX_TMUX_SESSION")
-    env_pane = os.environ.get("CODEX_WEZTERM_PANE")
-    if env_session or env_pane:
+    env_pane = os.environ.get("CODEX_WEZTERM_PANE") or os.environ.get("CODEX_ITERM2_PANE")
+    if env_pane:
+        terminal = "wezterm" if os.environ.get("CODEX_WEZTERM_PANE") else "iterm2"
         return {
-            "terminal": "wezterm" if env_pane else "tmux",
+            "terminal": terminal,
             "pane_id": env_pane,
-            "tmux_session": env_session,
             "runtime_dir": os.environ.get("CODEX_RUNTIME_DIR"),
         }
 
@@ -71,7 +70,7 @@ def main(argv: list[str]) -> int:
         if not backend:
             raise RuntimeError("❌ Cannot initialize terminal backend")
         if not backend.is_alive(pane_id):
-            terminal = data.get("terminal", "tmux")
+            terminal = data.get("terminal", "wezterm")
             raise RuntimeError(f"❌ {terminal} session not found: {pane_id}\nHint: Please confirm ccb is running")
         backend.send_text(pane_id, raw_command)
         print(f"✅ Sent to Codex ({pane_id})")

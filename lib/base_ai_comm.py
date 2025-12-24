@@ -96,7 +96,7 @@ class BaseCommunicator(abc.ABC):
 
         self.session_id = self.session_info["session_id"]
         self.runtime_dir = Path(self.session_info["runtime_dir"])
-        self.terminal = self.session_info.get("terminal", "tmux")
+        self.terminal = self.session_info.get("terminal", "wezterm")
         self.pane_id = get_pane_id_from_session(self.session_info) or ""
         self.backend = get_backend_for_session(self.session_info)
         self.project_session_file = self.session_info.get("_session_file")

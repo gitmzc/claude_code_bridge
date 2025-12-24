@@ -6,9 +6,8 @@ Execution:
 
 Detection items:
 1. Is `.codex-session` marked as active, does runtime directory exist
-2. tmux mode: Is FIFO pipe still accessible
-3. tmux mode: Is Codex side process alive (verified by `codex.pid`)
-4. WezTerm mode: Does pane still exist (detected via `wezterm cli list`)
+2. WezTerm mode: Does pane still exist (detected via `wezterm cli list`)
+3. iTerm2 mode: Does session still exist
 
 Output:
 - Success: `Codex connection OK (...)`

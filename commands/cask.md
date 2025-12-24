@@ -1,4 +1,4 @@
-Forward commands to Codex session via `cask` command (supports tmux / WezTerm, forward only, does not execute in current Claude process).
+Forward commands to Codex session via `cask` command (supports WezTerm / iTerm2, forward only, does not execute in current Claude process).
 
 Execution:
 - Run silently `Bash(cask "<content>")`, no additional analysis or operations after execution

@@ -2,7 +2,7 @@
 """
 ccb (Claude Code Bridge) - Unified AI Launcher
 Supports Claude + Codex / Claude + Gemini / all three simultaneously
-Supports tmux, WezTerm and iTerm2 terminals
+Supports WezTerm and iTerm2 terminals
 """
 
 import sys
@@ -18,12 +18,11 @@ import getpass
 import platform
 import tempfile
 import re
-import shutil
 from pathlib import Path
 
 script_dir = Path(__file__).resolve().parent
 sys.path.insert(0, str(script_dir / "lib"))
-from terminal import TmuxBackend, WeztermBackend, Iterm2Backend, detect_terminal, is_wsl, get_shell_type
+from terminal import WeztermBackend, Iterm2Backend, detect_terminal, is_wsl, get_shell_type
 from compat import setup_windows_encoding
 from ccb_config import get_backend_env
 from session_utils import safe_write_session, check_session_writable
@@ -133,8 +132,8 @@ def cmd_status(args):
         try:
             data = json.loads(session_file.read_text(encoding="utf-8-sig"))
             print_debug(f"{provider}: loaded session data", json.dumps(data, indent=2))
-            terminal = data.get("terminal", "tmux")
-            pane_id = data.get("pane_id") if terminal in ("wezterm", "iterm2") else data.get("tmux_session", "")
+            terminal = data.get("terminal", "wezterm")
+            pane_id = data.get("pane_id", "")
             active = data.get("active", False)
 
             if terminal == "wezterm" and pane_id:
@@ -143,9 +142,6 @@ def cmd_status(args):
             elif terminal == "iterm2" and pane_id:
                 backend = Iterm2Backend()
                 alive = backend.is_alive(pane_id)
-            elif pane_id and shutil.which("tmux"):
-                result = subprocess.run(["tmux", "has-session", "-t", pane_id], capture_output=True)
-                alive = result.returncode == 0
             else:
                 alive = False
 
@@ -168,7 +164,7 @@ def cmd_status(args):
         icon = "✅" if info.get("active") else "❌"
         print_msg(f"  {icon} {provider.capitalize()}: {info['status']}")
         if info.get("pane_id"):
-            print_msg(f"     {info.get('terminal', 'tmux')}: {info['pane_id']}")
+            print_msg(f"     {info.get('terminal', 'wezterm')}: {info['pane_id']}")
 
     return 0
 
@@ -186,8 +182,8 @@ def cmd_kill(args):
 
         try:
             data = json.loads(session_file.read_text(encoding="utf-8-sig"))
-            terminal = data.get("terminal", "tmux")
-            pane_id = data.get("pane_id") if terminal in ("wezterm", "iterm2") else data.get("tmux_session", "")
+            terminal = data.get("terminal", "wezterm")
+            pane_id = data.get("pane_id", "")
 
             if terminal == "wezterm" and pane_id:
                 backend = WeztermBackend()
@@ -195,9 +191,6 @@ def cmd_kill(args):
             elif terminal == "iterm2" and pane_id:
                 backend = Iterm2Backend()
                 backend.kill_pane(pane_id)
-            elif pane_id and shutil.which("tmux"):
-                subprocess.run(["tmux", "kill-session", "-t", pane_id], stderr=subprocess.DEVNULL)
-                subprocess.run(["tmux", "kill-session", "-t", f"launcher-{pane_id}"], stderr=subprocess.DEVNULL)
 
             data["active"] = False
             data["ended_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -227,8 +220,8 @@ def cmd_restore(args):
 
         try:
             data = json.loads(session_file.read_text(encoding="utf-8-sig"))
-            terminal = data.get("terminal", "tmux")
-            pane_id = data.get("pane_id") if terminal in ("wezterm", "iterm2") else data.get("tmux_session", "")
+            terminal = data.get("terminal", "wezterm")
+            pane_id = data.get("pane_id", "")
             active = data.get("active", False)
 
             if terminal == "wezterm" and pane_id:
@@ -240,11 +233,6 @@ def cmd_restore(args):
                 backend = Iterm2Backend()
                 if backend.is_alive(pane_id):
                     backend.activate(pane_id)
-                    return 0
-            elif pane_id and shutil.which("tmux"):
-                result = subprocess.run(["tmux", "has-session", "-t", pane_id], capture_output=True)
-                if result.returncode == 0:
-                    subprocess.run(["tmux", "attach-session", "-t", pane_id])
                     return 0
 
             if not active:

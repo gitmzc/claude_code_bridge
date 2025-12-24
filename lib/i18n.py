@@ -15,13 +15,10 @@ _current_lang = None
 MESSAGES = {
     "en": {
         # Terminal detection
-        "no_terminal_backend": "No terminal backend detected (WezTerm or tmux)",
+        "no_terminal_backend": "No terminal backend detected (WezTerm or iTerm2)",
         "solutions": "Solutions:",
         "install_wezterm": "Install WezTerm (recommended): https://wezfurlong.org/wezterm/",
-        "or_install_tmux": "Or install tmux",
         "or_set_ccb_terminal": "Or set CCB_TERMINAL=wezterm and configure CODEX_WEZTERM_BIN",
-        "tmux_not_installed": "tmux not installed and WezTerm unavailable",
-        "install_wezterm_or_tmux": "Solution: Install WezTerm (recommended) or tmux",
 
         # Startup messages
         "starting_backend": "Starting {provider} backend ({terminal})...",
@@ -93,13 +90,10 @@ MESSAGES = {
     },
     "zh": {
         # Terminal detection
-        "no_terminal_backend": "未检测到终端后端 (WezTerm 或 tmux)",
+        "no_terminal_backend": "未检测到终端后端 (WezTerm 或 iTerm2)",
         "solutions": "解决方案：",
         "install_wezterm": "安装 WezTerm (推荐): https://wezfurlong.org/wezterm/",
-        "or_install_tmux": "或安装 tmux",
         "or_set_ccb_terminal": "或设置 CCB_TERMINAL=wezterm 并配置 CODEX_WEZTERM_BIN",
-        "tmux_not_installed": "tmux 未安装且 WezTerm 不可用",
-        "install_wezterm_or_tmux": "解决方案：安装 WezTerm (推荐) 或 tmux",
 
         # Startup messages
         "starting_backend": "正在启动 {provider} 后端 ({terminal})...",

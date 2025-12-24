@@ -18,7 +18,6 @@ def detect_terminal_backends() -> Dict[str, bool]:
     backends = {
         "wezterm": False,
         "iterm2": False,
-        "tmux": False,
     }
 
     # Check WezTerm
@@ -29,10 +28,6 @@ def detect_terminal_backends() -> Dict[str, bool]:
     if platform.system() == "Darwin":
         if shutil.which("it2") or Path("/Applications/iTerm.app").exists():
             backends["iterm2"] = True
-
-    # Check tmux
-    if shutil.which("tmux"):
-        backends["tmux"] = True
 
     return backends
 
@@ -57,10 +52,6 @@ def get_recommended_backend(backends: Dict[str, bool]) -> Optional[str]:
     # iTerm2 for macOS
     if system == "Darwin" and backends["iterm2"]:
         return "iterm2"
-
-    # tmux as fallback
-    if backends["tmux"]:
-        return "tmux"
 
     return None
 
@@ -153,7 +144,7 @@ def run_init_wizard(config_path: Optional[Path] = None) -> Dict[str, Any]:
 
     if not available_backends:
         print("\n⚠️  No terminal backend found!")
-        print("   Please install one of: WezTerm (recommended), iTerm2 (macOS), or tmux")
+        print("   Please install one of: WezTerm (recommended) or iTerm2 (macOS)")
         print("   Then run 'ccb init' again.")
         return {}
 

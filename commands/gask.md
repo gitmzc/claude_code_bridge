@@ -1,4 +1,4 @@
-Forward commands to Gemini session via `gask` command (supports tmux / WezTerm, forward only, does not execute in current Claude process).
+Forward commands to Gemini session via `gask` command (supports WezTerm / iTerm2, forward only, does not execute in current Claude process).
 
 Execution:
 - Run silently `Bash(gask "<content>")`, no additional analysis or operations after execution

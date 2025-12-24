@@ -124,7 +124,7 @@ ERROR_INFO: Dict[ExitCode, Dict[str, str]] = {
     },
     ExitCode.TERMINAL_NOT_SUPPORTED: {
         "message": "Terminal is not supported",
-        "suggestion": "ccb supports tmux, WezTerm, and iTerm2. Install one of these terminals.",
+        "suggestion": "ccb supports WezTerm and iTerm2. Install one of these terminals.",
     },
     ExitCode.BACKEND_START_FAILED: {
         "message": "Failed to start AI backend",

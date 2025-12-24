@@ -131,45 +131,6 @@ class TerminalBackend(ABC):
     def create_pane(self, cmd: str, cwd: str, direction: str = "right", percent: int = 50, parent_pane: Optional[str] = None) -> str: ...
 
 
-class TmuxBackend(TerminalBackend):
-    def send_text(self, session: str, text: str) -> None:
-        sanitized = text.replace("\r", "").strip()
-        if not sanitized:
-            return
-        # Fast-path for typical short, single-line commands (fewer tmux subprocess calls).
-        if "\n" not in sanitized and len(sanitized) <= 200:
-            subprocess.run(["tmux", "send-keys", "-t", session, "-l", sanitized], check=True)
-            subprocess.run(["tmux", "send-keys", "-t", session, "Enter"], check=True)
-            return
-
-        buffer_name = f"tb-{os.getpid()}-{int(time.time() * 1000)}"
-        encoded = sanitized.encode("utf-8")
-        subprocess.run(["tmux", "load-buffer", "-b", buffer_name, "-"], input=encoded, check=True)
-        try:
-            subprocess.run(["tmux", "paste-buffer", "-t", session, "-b", buffer_name, "-p"], check=True)
-            enter_delay = _env_float("CCB_TMUX_ENTER_DELAY", 0.0)
-            if enter_delay:
-                time.sleep(enter_delay)
-            subprocess.run(["tmux", "send-keys", "-t", session, "Enter"], check=True)
-        finally:
-            subprocess.run(["tmux", "delete-buffer", "-b", buffer_name], stderr=subprocess.DEVNULL)
-
-    def is_alive(self, session: str) -> bool:
-        result = subprocess.run(["tmux", "has-session", "-t", session], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return result.returncode == 0
-
-    def kill_pane(self, session: str) -> None:
-        subprocess.run(["tmux", "kill-session", "-t", session], stderr=subprocess.DEVNULL)
-
-    def activate(self, session: str) -> None:
-        subprocess.run(["tmux", "attach", "-t", session])
-
-    def create_pane(self, cmd: str, cwd: str, direction: str = "right", percent: int = 50, parent_pane: Optional[str] = None) -> str:
-        session_name = f"ai-{int(time.time()) % 100000}-{os.getpid()}"
-        subprocess.run(["tmux", "new-session", "-d", "-s", session_name, "-c", cwd, cmd], check=True)
-        return session_name
-
-
 class Iterm2Backend(TerminalBackend):
     """iTerm2 backend, using it2 CLI (pip install it2)"""
     _it2_bin: Optional[str] = None
@@ -405,8 +366,6 @@ def detect_terminal() -> Optional[str]:
         return "wezterm"
     if os.environ.get("ITERM_SESSION_ID"):
         return "iterm2"
-    if os.environ.get("TMUX"):
-        return "tmux"
     # Check configured binary override or cached path
     if _get_wezterm_bin():
         return "wezterm"
@@ -416,8 +375,6 @@ def detect_terminal() -> Optional[str]:
     # Check available terminal tools
     if shutil.which("it2"):
         return "iterm2"
-    if shutil.which("tmux") or shutil.which("tmux.exe"):
-        return "tmux"
     return None
 
 
@@ -430,24 +387,19 @@ def get_backend(terminal_type: Optional[str] = None) -> Optional[TerminalBackend
         _backend_cache = WeztermBackend()
     elif t == "iterm2":
         _backend_cache = Iterm2Backend()
-    elif t == "tmux":
-        _backend_cache = TmuxBackend()
     return _backend_cache
 
 
 def get_backend_for_session(session_data: dict) -> Optional[TerminalBackend]:
-    terminal = session_data.get("terminal", "tmux")
+    terminal = session_data.get("terminal", "wezterm")
+    if terminal == "tmux":
+        raise RuntimeError("Tmux support has been removed in ccb v3.0. Please use WezTerm or iTerm2.")
     if terminal == "wezterm":
         return WeztermBackend()
     elif terminal == "iterm2":
         return Iterm2Backend()
-    return TmuxBackend()
+    return WeztermBackend()
 
 
 def get_pane_id_from_session(session_data: dict) -> Optional[str]:
-    terminal = session_data.get("terminal", "tmux")
-    if terminal == "wezterm":
-        return session_data.get("pane_id")
-    elif terminal == "iterm2":
-        return session_data.get("pane_id")
-    return session_data.get("tmux_session")
+    return session_data.get("pane_id")

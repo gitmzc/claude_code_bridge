@@ -250,7 +250,7 @@ function Install-ClaudeConfig {
 
 <!-- CCB_CONFIG_START -->
 ## Codex Collaboration Rules
-Codex is another AI assistant running in a separate terminal session (WezTerm, iTerm2 or tmux). When user intent involves asking/consulting/collaborating with Codex:
+Codex is another AI assistant running in a separate terminal session (WezTerm or iTerm2). When user intent involves asking/consulting/collaborating with Codex:
 
 Fast path (minimize latency):
 - If the user message starts with any of: ``@codex``, ``codex:``, ``ask codex``, ``let codex``, ``/cask-w`` then immediately run:
@@ -287,7 +287,7 @@ Examples:
 - "show last 3 conversations" -> cpend 3
 
 ## Gemini Collaboration Rules
-Gemini is another AI assistant running in a separate terminal session (WezTerm, iTerm2 or tmux). When user intent involves asking/consulting/collaborating with Gemini:
+Gemini is another AI assistant running in a separate terminal session (WezTerm or iTerm2). When user intent involves asking/consulting/collaborating with Gemini:
 
 Fast path (minimize latency):
 - If the user message starts with any of: ``@gemini``, ``gemini:``, ``ask gemini``, ``let gemini``, ``/gask-w`` then immediately run:
