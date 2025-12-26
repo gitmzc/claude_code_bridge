@@ -264,22 +264,26 @@ Trigger conditions (any match):
 - User wants codex to do something, give advice, or help review
 - User asks about codex's status or previous reply
 
-Command selection:
-- Default ask/collaborate -> ``cask-w "<question>"`` (synchronous, blocks until reply)
-  - Output is returned directly in command result
-  - Continue only after command completes
-- Send without waiting -> ``cask "<question>"`` (fire and forget)
-- Check connectivity -> ``cping``
-- View previous reply -> ``cpend``
-- View recent N conversations -> ``cpend N`` (e.g., cpend 3)
+Command selection (always use Bash wrapper):
+- Need immediate result -> ``Bash(cask-w "<question>")`` (synchronous, blocks until reply)
+- Long-running task / no need to wait -> ``Bash(cask "<question>")`` (fire and forget)
+- Check connectivity -> ``Bash(cping)``
+- View previous reply -> ``Bash(cpend)``
+- View recent N conversations -> ``Bash(cpend N)``
+- If cask-w times out, use ``Bash(cpend)`` to check for delayed reply
+
+Context awareness (IMPORTANT):
+- Codex runs in a separate terminal and cannot see your current context
+- Always include relevant file paths and code snippets in your message
+- Bad: ``cask-w "Refactor this function"``
+- Good: ``cask-w "Refactor the process_data function in lib/utils.py:\n<code_snippet>"``
 
 Examples:
-- "what does codex think" -> ``cask-w "..."`` (wait for output)
-- "ask codex to review this" -> ``cask-w "..."`` (wait for output)
-- "is codex alive" -> ``cping``
-- "don't wait for reply" -> ``cask "..."``
-- "view codex reply" -> ``cpend``
-- "show last 3 conversations" -> ``cpend 3``
+- "what does codex think" -> ``Bash(cask-w "...")``
+- "ask codex to review this" -> ``Bash(cask-w "Please review this code in src/main.py:\n<paste_code>")``
+- "is codex alive" -> ``Bash(cping)``
+- "don't wait for reply" -> ``Bash(cask "...")``
+- "view codex reply" -> ``Bash(cpend)``
 
 ## Gemini Collaboration Rules
 Gemini is another AI assistant running in a separate terminal session (WezTerm or iTerm2). When user intent involves asking/consulting/collaborating with Gemini:
@@ -296,27 +300,31 @@ Trigger conditions (any match):
 - User wants gemini to do something, give advice, or help review
 - User asks about gemini's status or previous reply
 
-Command selection:
-- Default ask/collaborate -> ``gask-w "<question>"`` (synchronous, blocks until reply)
-  - Output is returned directly in command result
-  - After completion, use ``gpend`` to check for follow-up messages
-- Send without waiting -> ``gask "<question>"`` (fire and forget)
-- Check connectivity -> ``gping``
-- View previous reply -> ``gpend``
-- View recent N conversations -> ``gpend N`` (e.g., gpend 3)
+Command selection (always use Bash wrapper):
+- Need immediate result -> ``Bash(gask-w "<question>")`` (synchronous, blocks until reply)
+- Long-running task / no need to wait -> ``Bash(gask "<question>")`` (fire and forget)
+- Check connectivity -> ``Bash(gping)``
+- View previous reply -> ``Bash(gpend)``
+- View recent N conversations -> ``Bash(gpend N)``
+- If gask-w times out, use ``Bash(gpend)`` to check for delayed reply
+
+Context awareness (IMPORTANT):
+- Gemini runs in a separate terminal and cannot see your current context
+- Always include relevant file paths and code snippets in your message
+- Bad: ``gask-w "Explain this"``
+- Good: ``gask-w "Explain the authentication flow in src/auth.ts:\n<code_snippet>"``
 
 Examples:
-- "what does gemini think" -> ``gask-w "..."`` (wait for output)
-- "ask gemini to review this" -> ``gask-w "..."`` (wait for output)
-- "is gemini alive" -> ``gping``
-- "don't wait for reply" -> ``gask "..."``
-- "view gemini reply" -> ``gpend``
-- "show last 5 conversations" -> ``gpend 5``
+- "what does gemini think" -> ``Bash(gask-w "...")``
+- "ask gemini to review this" -> ``Bash(gask-w "Please review this code in src/main.py:\n<paste_code>")``
+- "is gemini alive" -> ``Bash(gping)``
+- "don't wait for reply" -> ``Bash(gask "...")``
+- "view gemini reply" -> ``Bash(gpend)``
 
 ## Multi-AI Parallel Collaboration
 When multiple AIs need to work simultaneously (e.g., "let codex and gemini review together"):
-- Option 1 (async): Run ``cask "..."`` and ``gask "..."`` in parallel (fire and forget), then use ``cpend``/``gpend`` to check results later
-- Option 2 (sync sequential): Run ``cask-w "..."`` first, then ``gask-w "..."``, summarize both results
+- Option 1 (async): Run ``Bash(cask "...")`` and ``Bash(gask "...")`` in parallel, then use ``Bash(cpend)``/``Bash(gpend)`` to check results later
+- Option 2 (sync sequential): Run ``Bash(cask-w "...")`` first, then ``Bash(gask-w "...")``, summarize both results
 - Do NOT use run_in_background=true with cask-w/gask-w
 <!-- CCB_CONFIG_END -->
 "@
