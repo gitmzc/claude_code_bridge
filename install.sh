@@ -624,9 +624,11 @@ install_claude_md_config() {
 ## Codex Collaboration Rules
 Codex is another AI assistant running in a separate terminal session (WezTerm or iTerm2). When user intent involves asking/consulting/collaborating with Codex:
 
+**CRITICAL: cask-w must run synchronously. Do NOT use run_in_background=true**
+
 Fast path (minimize latency):
 - If the user message starts with any of: `@codex`, `codex:`, `ask codex`, `let codex`, `/cask-w` then immediately run:
-  - `Bash(cask-w "<message>", run_in_background=true)` then STOP and wait for bash-notification
+  - `Bash(cask-w "<message>")` (synchronous, wait for output)
 - If user message is only the prefix (no content), ask a 1-line clarification for what to send.
 
 Trigger conditions (any match):
@@ -634,36 +636,31 @@ Trigger conditions (any match):
 - User wants codex to do something, give advice, or help review
 - User asks about codex's status or previous reply
 
-Command selection based on task complexity:
-- Simple query (quick answer expected) -> `Bash(cask-w "<question>", run_in_background=true)`
-  - When bash-notification arrives (task completed), immediately cat the output file to show result
-  - Do NOT continue with other work until result is shown
-- Complex task (may take time) -> `cask "<question>"` (fire and forget), then END your turn
+Command selection:
+- Default ask/collaborate -> `cask-w "<question>"` (synchronous, blocks until reply)
+  - Output is returned directly in command result
+  - Continue only after command completes
 - Send without waiting -> `cask "<question>"` (fire and forget)
 - Check connectivity -> `cping`
 - View previous reply -> `cpend`
 - View recent N conversations -> `cpend N` (e.g., cpend 3)
 
-IMPORTANT - After background task submission:
-- When you use `cask` (without -w) for a complex task, END your turn immediately
-- Do NOT continue working on other tasks while waiting
-- Let the user know they can use `cpend` to check the reply later
-
 Examples:
-- "what does codex think" -> `Bash(cask-w "...", run_in_background=true)`, wait for notification, cat output
-- "ask codex to review this" -> `Bash(cask-w "...", run_in_background=true)`, wait for notification, cat output
-- "let codex refactor the entire module" -> `cask "..."`, then END turn (complex task)
-- "is codex alive" -> cping
-- "don't wait for reply" -> cask
-- "view codex reply" -> cpend
-- "show last 3 conversations" -> cpend 3
+- "what does codex think" -> `cask-w "..."` (wait for output)
+- "ask codex to review this" -> `cask-w "..."` (wait for output)
+- "is codex alive" -> `cping`
+- "don't wait for reply" -> `cask "..."`
+- "view codex reply" -> `cpend`
+- "show last 3 conversations" -> `cpend 3`
 
 ## Gemini Collaboration Rules
 Gemini is another AI assistant running in a separate terminal session (WezTerm or iTerm2). When user intent involves asking/consulting/collaborating with Gemini:
 
+**CRITICAL: gask-w must run synchronously. Do NOT use run_in_background=true**
+
 Fast path (minimize latency):
 - If the user message starts with any of: `@gemini`, `gemini:`, `ask gemini`, `let gemini`, `/gask-w` then immediately run:
-  - `Bash(gask-w "<message>", run_in_background=true)` then STOP and wait for bash-notification
+  - `Bash(gask-w "<message>")` (synchronous, wait for output)
 - If user message is only the prefix (no content), ask a 1-line clarification for what to send.
 
 Trigger conditions (any match):
@@ -671,29 +668,29 @@ Trigger conditions (any match):
 - User wants gemini to do something, give advice, or help review
 - User asks about gemini's status or previous reply
 
-Command selection based on task complexity:
-- Simple query (quick answer expected) -> `Bash(gask-w "<question>", run_in_background=true)`
-  - When bash-notification arrives (task completed), immediately cat the output file to show result
-  - Do NOT continue with other work until result is shown
-- Complex task (may take time) -> `gask "<question>"` (fire and forget), then END your turn
+Command selection:
+- Default ask/collaborate -> `gask-w "<question>"` (synchronous, blocks until reply)
+  - Output is returned directly in command result
+  - After completion, use `gpend` to check for follow-up messages
 - Send without waiting -> `gask "<question>"` (fire and forget)
 - Check connectivity -> `gping`
 - View previous reply -> `gpend`
 - View recent N conversations -> `gpend N` (e.g., gpend 3)
 
-IMPORTANT - After background task submission:
-- When you use `gask` (without -w) for a complex task, END your turn immediately
-- Do NOT continue working on other tasks while waiting
-- Let the user know they can use `gpend` to check the reply later
-
 Examples:
-- "what does gemini think" -> `Bash(gask-w "...", run_in_background=true)`, wait for notification, cat output
-- "ask gemini to review this" -> `Bash(gask-w "...", run_in_background=true)`, wait for notification, cat output
-- "let gemini analyze the codebase" -> `gask "..."`, then END turn (complex task)
-- "is gemini alive" -> gping
-- "don't wait for reply" -> gask
-- "view gemini reply" -> gpend
-- "show last 5 conversations" -> gpend 5
+- "what does gemini think" -> `gask-w "..."` (wait for output)
+- "ask gemini to review this" -> `gask-w "..."` (wait for output)
+- "is gemini alive" -> `gping`
+- "don't wait for reply" -> `gask "..."`
+- "view gemini reply" -> `gpend`
+- "show last 5 conversations" -> `gpend 5`
+
+## Multi-AI Parallel Collaboration
+When multiple AIs need to work simultaneously (e.g., "let codex and gemini review together"):
+- Run both commands in parallel: `cask-w "..."` and `gask-w "..."` (both with run_in_background=true)
+- Use TaskOutput to check both task statuses
+- Wait for both to complete (status: completed) before continuing
+- Summarize both opinions before reporting to user
 <!-- CCB_CONFIG_END -->
 AI_RULES
   local ccb_content
