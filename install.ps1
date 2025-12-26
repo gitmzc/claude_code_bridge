@@ -216,10 +216,17 @@ function Install-Native {
   }
 
   Install-ClaudeConfig
+  Install-CodexConfig
+  Install-GeminiConfig
 
   Write-Host ""
   Write-Host "Installation complete!"
   Write-Host "Restart your terminal (WezTerm) for PATH changes to take effect."
+  Write-Host ""
+  Write-Host "Configured:"
+  Write-Host "  - ~/.claude/CLAUDE.md (AI collaboration rules)"
+  Write-Host "  - ~/.codex/AGENTS.md (Codex rules)"
+  Write-Host "  - ~/.gemini/GEMINI.md (Gemini rules)"
   Write-Host ""
   Write-Host "Quick start:"
   Write-Host "  ccb up codex    # Start with Codex backend"
@@ -249,14 +256,30 @@ function Install-ClaudeConfig {
   $codexRules = @"
 
 <!-- CCB_CONFIG_START -->
+## OpenSpec 多 AI 协作规则
+
+当使用 OpenSpec 工作流时，Claude Code 作为主协调者，可以委派任务给 Codex 和 Gemini。
+
+### 任务分配策略
+- **Gemini**: 前端任务（React/Vue/CSS/UI组件/样式等）
+- **Codex**: 后端任务（API/数据库/服务端逻辑/CLI等）
+- **Claude**: 协调整体流程、整合反馈、全栈任务
+
+### 协作场景
+- **规范审查**: 让多个 AI 审查 proposal.md 或 spec.md
+- **任务分配**: 将 tasks.md 中的任务按前后端分配给对应 AI
+- **设计讨论**: 在 design.md 决策时征求多方意见
+
+---
+
 ## Codex Collaboration Rules
 Codex is another AI assistant running in a separate terminal session (WezTerm or iTerm2). When user intent involves asking/consulting/collaborating with Codex:
 
-**CRITICAL: cask-w must run synchronously. Do NOT use run_in_background=true**
+**CRITICAL: 必须同步执行 cask-w，禁止使用 run_in_background=true**
 
 Fast path (minimize latency):
-- If the user message starts with any of: ``@codex``, ``codex:``, ``ask codex``, ``let codex``, ``/cask-w`` then immediately run:
-  - ``Bash(cask-w "<message>")`` (synchronous, wait for output)
+- If the user message starts with any of: ``@codex``, ``codex:``, ``codex：``, ``ask codex``, ``let codex``, ``问codex``, ``让codex``, ``调取codex``, ``/cask-w`` then immediately run:
+  - ``Bash(cask-w "<message>")`` (同步执行，等待完成)
 - If user message is only the prefix (no content), ask a 1-line clarification for what to send.
 
 Trigger conditions (any match):
@@ -265,34 +288,38 @@ Trigger conditions (any match):
 - User asks about codex's status or previous reply
 
 Command selection (always use Bash wrapper):
-- Need immediate result -> ``Bash(cask-w "<question>")`` (synchronous, blocks until reply)
-- Long-running task / no need to wait -> ``Bash(cask "<question>")`` (fire and forget)
-- Check connectivity -> ``Bash(cping)``
-- View previous reply -> ``Bash(cpend)``
-- View recent N conversations -> ``Bash(cpend N)``
-- If cask-w times out, use ``Bash(cpend)`` to check for delayed reply
+- 需要立即结果 -> ``Bash(cask-w "<question>")`` (同步阻塞直到回复)
+- 长时间任务/不需要等待 -> ``Bash(cask "<question>")`` (fire and forget)
+- 检查连接状态 -> ``Bash(cping)``
+- 查看之前的回复 -> ``Bash(cpend)``
+- 查看最近 N 轮对话 -> ``Bash(cpend N)``
+- 如果 cask-w 超时，使用 ``Bash(cpend)`` 检查延迟的回复
 
-Context awareness (IMPORTANT):
-- Codex runs in a separate terminal and cannot see your current context
-- Always include relevant file paths and code snippets in your message
-- Bad: ``cask-w "Refactor this function"``
-- Good: ``cask-w "Refactor the process_data function in lib/utils.py:\n<code_snippet>"``
+Context awareness (重要):
+- Codex 在独立终端运行，看不到你当前的上下文
+- 发送问题时必须包含相关文件路径和代码片段
+- 错误示例: ``cask-w "重构这个函数"``
+- 正确示例: ``cask-w "重构 lib/utils.py 中的 process_data 函数:\n<代码片段>"``
 
 Examples:
-- "what does codex think" -> ``Bash(cask-w "...")``
-- "ask codex to review this" -> ``Bash(cask-w "Please review this code in src/main.py:\n<paste_code>")``
-- "is codex alive" -> ``Bash(cping)``
-- "don't wait for reply" -> ``Bash(cask "...")``
-- "view codex reply" -> ``Bash(cpend)``
+- "what does codex think" / "问codex怎么看" -> ``Bash(cask-w "...")``
+- "ask codex to review this" -> ``Bash(cask-w "请审查 src/main.py 中的这段代码:\n<粘贴代码>")``
+- "is codex alive" / "codex在吗" -> ``Bash(cping)``
+- "don't wait for reply" / "不用等回复" -> ``Bash(cask "...")``
+- "view codex reply" / "看codex回复" -> ``Bash(cpend)``
+
+---
 
 ## Gemini Collaboration Rules
 Gemini is another AI assistant running in a separate terminal session (WezTerm or iTerm2). When user intent involves asking/consulting/collaborating with Gemini:
 
-**CRITICAL: gask-w must run synchronously. Do NOT use run_in_background=true**
+**CRITICAL: 必须同步执行 gask-w，禁止使用 run_in_background=true**
+
+**注意: Gemini 可能会分多条消息回复，需要多次检查 gpend 直到回复完整**
 
 Fast path (minimize latency):
-- If the user message starts with any of: ``@gemini``, ``gemini:``, ``ask gemini``, ``let gemini``, ``/gask-w`` then immediately run:
-  - ``Bash(gask-w "<message>")`` (synchronous, wait for output)
+- If the user message starts with any of: ``@gemini``, ``gemini:``, ``gemini：``, ``ask gemini``, ``let gemini``, ``问gemini``, ``让gemini``, ``调取gemini``, ``/gask-w`` then immediately run:
+  - ``Bash(gask-w "<message>")`` (同步执行，等待完成)
 - If user message is only the prefix (no content), ask a 1-line clarification for what to send.
 
 Trigger conditions (any match):
@@ -301,31 +328,34 @@ Trigger conditions (any match):
 - User asks about gemini's status or previous reply
 
 Command selection (always use Bash wrapper):
-- Need immediate result -> ``Bash(gask-w "<question>")`` (synchronous, blocks until reply)
-- Long-running task / no need to wait -> ``Bash(gask "<question>")`` (fire and forget)
-- Check connectivity -> ``Bash(gping)``
-- View previous reply -> ``Bash(gpend)``
-- View recent N conversations -> ``Bash(gpend N)``
-- If gask-w times out, use ``Bash(gpend)`` to check for delayed reply
+- 需要立即结果 -> ``Bash(gask-w "<question>")`` (同步阻塞直到回复)
+- 长时间任务/不需要等待 -> ``Bash(gask "<question>")`` (fire and forget)
+- 检查连接状态 -> ``Bash(gping)``
+- 查看之前的回复 -> ``Bash(gpend)``
+- 查看最近 N 轮对话 -> ``Bash(gpend N)``
+- 如果 gask-w 超时，使用 ``Bash(gpend)`` 检查延迟的回复
 
-Context awareness (IMPORTANT):
-- Gemini runs in a separate terminal and cannot see your current context
-- Always include relevant file paths and code snippets in your message
-- Bad: ``gask-w "Explain this"``
-- Good: ``gask-w "Explain the authentication flow in src/auth.ts:\n<code_snippet>"``
+Context awareness (重要):
+- Gemini 在独立终端运行，看不到你当前的上下文
+- 发送问题时必须包含相关文件路径和代码片段
+- 错误示例: ``gask-w "解释一下这个"``
+- 正确示例: ``gask-w "解释 src/auth.ts 中的认证流程:\n<代码片段>"``
 
 Examples:
-- "what does gemini think" -> ``Bash(gask-w "...")``
-- "ask gemini to review this" -> ``Bash(gask-w "Please review this code in src/main.py:\n<paste_code>")``
-- "is gemini alive" -> ``Bash(gping)``
-- "don't wait for reply" -> ``Bash(gask "...")``
-- "view gemini reply" -> ``Bash(gpend)``
+- "what does gemini think" / "问gemini怎么看" -> ``Bash(gask-w "...")``
+- "ask gemini to review this" -> ``Bash(gask-w "请审查 src/main.py 中的这段代码:\n<粘贴代码>")``
+- "is gemini alive" / "gemini在吗" -> ``Bash(gping)``
+- "don't wait for reply" / "不用等回复" -> ``Bash(gask "...")``
+- "view gemini reply" / "看gemini回复" -> ``Bash(gpend)``
 
-## Multi-AI Parallel Collaboration
-When multiple AIs need to work simultaneously (e.g., "let codex and gemini review together"):
-- Option 1 (async): Run ``Bash(cask "...")`` and ``Bash(gask "...")`` in parallel, then use ``Bash(cpend)``/``Bash(gpend)`` to check results later
-- Option 2 (sync sequential): Run ``Bash(cask-w "...")`` first, then ``Bash(gask-w "...")``, summarize both results
-- Do NOT use run_in_background=true with cask-w/gask-w
+---
+
+## 多 AI 并行协作
+
+当需要多个 AI 同时工作时（如 "让 codex 和 gemini 一起审查"）：
+- 方案1 (异步): 并行执行 ``Bash(cask "...")`` 和 ``Bash(gask "...")``, 然后用 ``Bash(cpend)``/``Bash(gpend)`` 查看结果
+- 方案2 (同步顺序): 先执行 ``Bash(cask-w "...")``, 再执行 ``Bash(gask-w "...")``, 汇总两者结果
+- 禁止对 cask-w/gask-w 使用 run_in_background=true
 <!-- CCB_CONFIG_END -->
 "@
 
@@ -382,6 +412,148 @@ When multiple AIs need to work simultaneously (e.g., "let codex and gemini revie
     $settings | ConvertTo-Json -Depth 10 | Out-File -Encoding UTF8 -FilePath $settingsJson
     Write-Host "Updated settings.json with permissions"
   }
+}
+
+function Install-CodexConfig {
+  $codexDir = Join-Path $env:USERPROFILE ".codex"
+  $agentsMd = Join-Path $codexDir "AGENTS.md"
+
+  if (-not (Test-Path $codexDir)) {
+    New-Item -ItemType Directory -Path $codexDir -Force | Out-Null
+  }
+
+  $codexAgentsRules = @"
+### Claude Code Bridge 协作规则
+
+当你通过 claude_code_bridge 被调用时，请遵循以下规则：
+
+**代码修改限制（必须遵守）**
+
+- 禁止擅自修改代码，必须先向用户说明修改方案并获得确认
+- 只能进行分析、建议、审查等只读操作
+- 如需修改代码，必须明确列出修改内容并等待用户批准
+- 未经确认直接修改代码是严重违规行为
+
+**回复结束标记（必须遵守）**
+
+每次回复完成后，你必须在最后一行输出以下标记：
+
+``````
+[CCB_REPLY_END]
+``````
+
+这个标记用于让 claude_code_bridge 准确判断你的回复已经完成。
+
+**注意事项：**
+- 标记必须单独占一行
+- 标记必须在回复的最末尾
+- 不要在回复中间输出这个标记
+- 即使是简短的回复也要输出这个标记
+
+---
+
+### CCB 命令使用规范（协作时必须遵守）
+
+当你需要与其他 AI（如 Claude 或 Gemini）协作时：
+
+**与 Gemini 协作：**
+- 同步等待回复 -> ``gask-w "<question>"`` (阻塞直到收到回复)
+- 只发送不等待 -> ``gask "<question>"`` (fire and forget)
+- 检查连接状态 -> ``gping``
+- 查看之前的回复 -> ``gpend``
+- 查看最近 N 轮对话 -> ``gpend N``
+
+**重要：**
+- ``gask-w`` 必须同步执行，不使用后台模式
+- 回复必须以 ``[CCB_REPLY_END]`` 结尾，且只出现一次
+
+---
+
+### 语言规范
+
+- 使用中文回复
+- 代码注释使用中文
+
+### 输出风格
+
+- 简洁明了，直击重点
+- 适当使用 emoji 增强可读性
+- 代码块使用正确的语言标识
+"@
+
+  $codexAgentsRules | Out-File -Encoding UTF8 -FilePath $agentsMd
+  Write-Host "Updated Codex collaboration rules in $agentsMd"
+}
+
+function Install-GeminiConfig {
+  $geminiDir = Join-Path $env:USERPROFILE ".gemini"
+  $geminiMd = Join-Path $geminiDir "GEMINI.md"
+
+  if (-not (Test-Path $geminiDir)) {
+    New-Item -ItemType Directory -Path $geminiDir -Force | Out-Null
+  }
+
+  $geminiRules = @"
+### Claude Code Bridge 协作规则
+
+当你通过 claude_code_bridge 被调用时，请遵循以下规则：
+
+**代码修改限制（必须遵守）**
+
+- 禁止擅自修改代码，必须先向用户说明修改方案并获得确认
+- 只能进行分析、建议、审查等只读操作
+- 如需修改代码，必须明确列出修改内容并等待用户批准
+- 未经确认直接修改代码是严重违规行为
+
+**回复结束标记（必须遵守）**
+
+每次回复完成后，你必须在最后一行输出以下标记：
+
+``````
+[CCB_REPLY_END]
+``````
+
+这个标记用于让 claude_code_bridge 准确判断你的回复已经完成。
+
+**注意事项：**
+- 标记必须单独占一行
+- 标记必须在回复的最末尾
+- 不要在回复中间输出这个标记
+- 即使是简短的回复也要输出这个标记
+
+---
+
+### CCB 命令使用规范（协作时必须遵守）
+
+当你需要与其他 AI（如 Claude 或 Codex）协作时：
+
+**与 Codex 协作：**
+- 同步等待回复 -> ``cask-w "<question>"`` (阻塞直到收到回复)
+- 只发送不等待 -> ``cask "<question>"`` (fire and forget)
+- 检查连接状态 -> ``cping``
+- 查看之前的回复 -> ``cpend``
+- 查看最近 N 轮对话 -> ``cpend N``
+
+**重要：**
+- ``cask-w`` 必须同步执行，不使用后台模式
+- 回复必须以 ``[CCB_REPLY_END]`` 结尾，且只出现一次
+
+---
+
+### 语言规范
+
+- 使用中文回复
+- 代码注释使用中文
+
+### 输出风格
+
+- 简洁明了，直击重点
+- 适当使用 emoji 增强可读性
+- 代码块使用正确的语言标识
+"@
+
+  $geminiRules | Out-File -Encoding UTF8 -FilePath $geminiMd
+  Write-Host "Updated Gemini collaboration rules in $geminiMd"
 }
 
 function Uninstall-Native {
