@@ -315,10 +315,9 @@ Examples:
 
 ## Multi-AI Parallel Collaboration
 When multiple AIs need to work simultaneously (e.g., "let codex and gemini review together"):
-- Run both commands in parallel: ``cask-w "..."`` and ``gask-w "..."`` (both with run_in_background=true)
-- Use TaskOutput to check both task statuses
-- Wait for both to complete (status: completed) before continuing
-- Summarize both opinions before reporting to user
+- Option 1 (async): Run ``cask "..."`` and ``gask "..."`` in parallel (fire and forget), then use ``cpend``/``gpend`` to check results later
+- Option 2 (sync sequential): Run ``cask-w "..."`` first, then ``gask-w "..."``, summarize both results
+- Do NOT use run_in_background=true with cask-w/gask-w
 <!-- CCB_CONFIG_END -->
 "@
 
