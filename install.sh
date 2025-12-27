@@ -910,6 +910,182 @@ GEMINI_RULES
   echo "Updated Gemini collaboration rules in $gemini_md"
 }
 
+# ============================================
+# Serena MCP Server Configuration
+# ============================================
+
+check_uv_installed() {
+  if command -v uvx >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v uv >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
+}
+
+install_serena_claude_code() {
+  if ! check_uv_installed; then
+    echo "⚠️ uvx not found, skipping Serena configuration for Claude Code"
+    echo "   Install uv first: https://docs.astral.sh/uv/getting-started/installation/"
+    return 1
+  fi
+
+  if ! command -v claude >/dev/null 2>&1; then
+    echo "⚠️ claude command not found, skipping Serena configuration for Claude Code"
+    return 1
+  fi
+
+  if claude mcp add --scope user serena -- uvx --from git+https://github.com/oraios/serena serena start-mcp-server --context=claude-code --project-from-cwd 2>/dev/null; then
+    echo "✅ Serena MCP configured for Claude Code"
+  else
+    echo "⚠️ Failed to add Serena MCP to Claude Code (may already exist)"
+  fi
+}
+
+install_serena_codex() {
+  if ! check_uv_installed; then
+    echo "⚠️ uvx not found, skipping Serena configuration for Codex"
+    return 1
+  fi
+
+  local codex_config="$HOME/.codex/config.toml"
+  mkdir -p "$HOME/.codex"
+
+  if [[ -f "$codex_config" ]] && grep -q '\[mcp_servers.serena\]' "$codex_config" 2>/dev/null; then
+    echo "✅ Serena MCP already configured for Codex"
+    return 0
+  fi
+
+  if [[ -f "$codex_config" ]]; then
+    cat >> "$codex_config" << 'SERENA_CODEX'
+
+[mcp_servers.serena]
+command = "uvx"
+args = ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "codex"]
+SERENA_CODEX
+  else
+    cat > "$codex_config" << 'SERENA_CODEX'
+[mcp_servers.serena]
+command = "uvx"
+args = ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "codex"]
+SERENA_CODEX
+  fi
+  echo "✅ Serena MCP configured for Codex"
+}
+
+install_serena_gemini() {
+  if ! check_uv_installed; then
+    echo "⚠️ uvx not found, skipping Serena configuration for Gemini"
+    return 1
+  fi
+
+  local gemini_settings="$HOME/.gemini/settings.json"
+  mkdir -p "$HOME/.gemini"
+
+  if [[ ! -f "$gemini_settings" ]]; then
+    cat > "$gemini_settings" << 'SERENA_GEMINI'
+{
+  "mcpServers": {
+    "serena": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "ide"]
+    }
+  }
+}
+SERENA_GEMINI
+    echo "✅ Serena MCP configured for Gemini"
+    return 0
+  fi
+
+  if grep -q '"serena"' "$gemini_settings" 2>/dev/null; then
+    echo "✅ Serena MCP already configured for Gemini"
+    return 0
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c "
+import json
+with open('$gemini_settings', 'r') as f:
+    data = json.load(f)
+if 'mcpServers' not in data:
+    data['mcpServers'] = {}
+data['mcpServers']['serena'] = {
+    'command': 'uvx',
+    'args': ['--from', 'git+https://github.com/oraios/serena', 'serena', 'start-mcp-server', '--context', 'ide']
+}
+with open('$gemini_settings', 'w') as f:
+    json.dump(data, f, indent=2)
+"
+    echo "✅ Serena MCP configured for Gemini"
+  else
+    echo "⚠️ python3 required to update Gemini settings"
+    return 1
+  fi
+}
+
+install_serena_all() {
+  echo
+  echo "📦 Configuring Serena MCP Server..."
+
+  if ! check_uv_installed; then
+    echo "⚠️ uv/uvx not found, skipping Serena configuration"
+    echo "   To install uv: https://docs.astral.sh/uv/getting-started/installation/"
+    return 1
+  fi
+
+  install_serena_claude_code
+  install_serena_codex
+  install_serena_gemini
+
+  echo
+  echo "📝 Serena usage notes:"
+  echo "   - Claude Code: Serena auto-detects project from current directory"
+  echo "   - Codex: Say 'Activate the current dir as project using serena'"
+  echo "   - Gemini: Say 'Activate the current project using serena'"
+  echo
+}
+
+uninstall_serena_all() {
+  echo "🧹 Removing Serena MCP configuration..."
+
+  if command -v claude >/dev/null 2>&1; then
+    claude mcp remove --scope user serena 2>/dev/null && echo "Removed Serena from Claude Code" || true
+  fi
+
+  local codex_config="$HOME/.codex/config.toml"
+  if [[ -f "$codex_config" ]] && grep -q '\[mcp_servers.serena\]' "$codex_config" 2>/dev/null; then
+    if command -v python3 >/dev/null 2>&1; then
+      python3 -c "
+import re
+with open('$codex_config', 'r') as f:
+    content = f.read()
+pattern = r'\n?\[mcp_servers\.serena\][^\[]*'
+content = re.sub(pattern, '', content)
+with open('$codex_config', 'w') as f:
+    f.write(content.strip() + '\n')
+"
+      echo "Removed Serena from Codex"
+    fi
+  fi
+
+  local gemini_settings="$HOME/.gemini/settings.json"
+  if [[ -f "$gemini_settings" ]] && grep -q '"serena"' "$gemini_settings" 2>/dev/null; then
+    if command -v python3 >/dev/null 2>&1; then
+      python3 -c "
+import json
+with open('$gemini_settings', 'r') as f:
+    data = json.load(f)
+if 'mcpServers' in data and 'serena' in data['mcpServers']:
+    del data['mcpServers']['serena']
+with open('$gemini_settings', 'w') as f:
+    json.dump(data, f, indent=2)
+"
+      echo "Removed Serena from Gemini"
+    fi
+  fi
+}
+
 install_settings_permissions() {
   local settings_file="$HOME/.claude/settings.json"
   mkdir -p "$HOME/.claude"
@@ -1004,6 +1180,7 @@ install_all() {
   install_codex_agents_config
   install_gemini_config
   install_settings_permissions
+  install_serena_all
   echo "✅ Installation complete"
   echo "   Project dir    : $INSTALL_PREFIX"
   echo "   Executable dir : $BIN_DIR"
@@ -1164,6 +1341,9 @@ uninstall_all() {
 
   # 5. Remove permission configuration from settings.json
   uninstall_settings_permissions
+
+  # 6. Remove Serena MCP configuration
+  uninstall_serena_all
 
   echo "✅ Uninstall complete"
   echo "   💡 Note: Dependencies (python3, wezterm, it2) were not removed"
