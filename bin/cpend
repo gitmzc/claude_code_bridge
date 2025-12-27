@@ -126,11 +126,19 @@ def main() -> int:
             # Avoid falling back to "global latest" if the pending log path is missing,
             # otherwise cpend may display an unrelated reply from another project.
             if log_path and log_path.exists():
-                try:
-                    offset = int(pending.get("offset", 0) or 0)
-                except Exception:
-                    offset = 0
-                state = {"log_path": str(log_path), "offset": offset}
+                # Handle both new offset_info format and legacy offset format
+                offset_info = pending.get("offset_info")
+                if offset_info and isinstance(offset_info, (list, tuple)) and len(offset_info) == 2:
+                    # New format: offset_info = [byte_offset, partial_msgs]
+                    offset_info = (int(offset_info[0]), list(offset_info[1]) if offset_info[1] else [])
+                else:
+                    # Legacy format: offset = int (convert to offset_info tuple)
+                    try:
+                        offset = int(pending.get("offset", 0) or 0)
+                    except Exception:
+                        offset = 0
+                    offset_info = (offset, [])
+                state = {"log_path": log_path, "offset_info": offset_info}
                 message, _ = comm.log_reader.try_get_message(state)
                 if message:
                     _clear_pending_state()

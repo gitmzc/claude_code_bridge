@@ -36,9 +36,15 @@ def main(argv: list[str]) -> int:
         try:
             with session_file.open("r", encoding="utf-8-sig") as handle:
                 data = json.load(handle)
+            # Save offset_info tuple (byte_offset, partial_msgs) for CodexLogReader compatibility
+            offset_info = state.get("offset_info", (0, []))
+            if isinstance(offset_info, tuple) and len(offset_info) == 2:
+                byte_offset, partial_msgs = offset_info
+            else:
+                byte_offset, partial_msgs = 0, []
             data["pending_state"] = {
                 "log_path": str(state.get("log_path")) if state.get("log_path") else None,
-                "offset": int(state.get("offset", 0) or 0),
+                "offset_info": [int(byte_offset), list(partial_msgs) if partial_msgs else []],
             }
             tmp_file = session_file.with_suffix(".tmp")
             with tmp_file.open("w", encoding="utf-8") as handle:
