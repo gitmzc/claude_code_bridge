@@ -53,8 +53,37 @@ def main(argv: list[str]) -> int:
         # Check session health
         healthy, status = comm._check_session_health_impl(probe_terminal=False)
         if not healthy:
-            print(f"❌ Session error: {status}", file=sys.stderr)
-            return 1
+            # Interactive recovery: ask user if they want to start the session
+            if sys.stdin.isatty():
+                print(f"⚠️  Codex session not active: {status}", file=sys.stderr)
+                try:
+                    response = input("Start Codex now? [Y/n]: ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    response = "n"
+
+                if response in ("", "y", "yes"):
+                    print("🚀 Starting Codex...", flush=True)
+                    from launcher import AILauncher
+                    launcher = AILauncher(providers=["codex"], resume=False, auto=False, no_claude=True)
+                    result = launcher.run_up()
+                    if result != 0:
+                        print("❌ Failed to start Codex", file=sys.stderr)
+                        return 1
+                    # Reload communicator after starting
+                    import time
+                    time.sleep(1)  # Wait for session file to be written
+                    comm = CodexCommunicator(lazy_init=True)
+                    healthy, status = comm._check_session_health_impl(probe_terminal=False)
+                    if not healthy:
+                        print(f"❌ Session still not healthy: {status}", file=sys.stderr)
+                        return 1
+                    print("✅ Codex started successfully", flush=True)
+                else:
+                    print("❌ Cancelled", file=sys.stderr)
+                    return 1
+            else:
+                print(f"❌ Session error: {status}", file=sys.stderr)
+                return 1
 
         # Send message
         print(f"🔔 {t('sending_to', provider='Codex')}", flush=True)
@@ -66,6 +95,9 @@ def main(argv: list[str]) -> int:
         # Progressive heartbeat: starts at 2s, increases to 5s, then 10s
         heartbeat_intervals = [2.0, 2.0, 2.0, 5.0, 5.0, 10.0]  # First 3 at 2s, next 2 at 5s, then 10s
         heartbeat_idx = 0
+        # Spinner characters for dynamic feedback
+        spinner_chars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+        spinner_idx = 0
 
         # Wait with periodic heartbeat to let Claude know we're still waiting
         # Use monotonic clock to avoid issues with system time changes
@@ -93,9 +125,15 @@ def main(argv: list[str]) -> int:
             # Output heartbeat if interval passed
             now = time.monotonic()
             if now - last_heartbeat >= current_interval:
-                print(f"⏳ Still waiting for Codex... ({int(elapsed)}s elapsed)", flush=True)
+                spinner = spinner_chars[spinner_idx % len(spinner_chars)]
+                spinner_idx += 1
+                print(f"\r{spinner} Waiting for Codex... ({int(elapsed)}s)   ", end="", flush=True)
                 last_heartbeat = now
                 heartbeat_idx += 1
+
+        # Clear the spinner line before output
+        if spinner_idx > 0:
+            print("\r" + " " * 40 + "\r", end="", flush=True)
 
         # Save to cache
         cache_dir = Path.home() / ".cache" / "ccb"

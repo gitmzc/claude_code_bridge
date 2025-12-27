@@ -47,6 +47,33 @@ from output import init_output, is_quiet, is_json, is_debug, print_msg, print_er
 from errors import ExitCode, format_error, print_error_and_exit
 from broadcast import parallel_ask, format_results, cmd_ask
 
+
+def time_ago(timestamp_str: str) -> str:
+    """Convert timestamp string to human-readable relative time."""
+    try:
+        from datetime import datetime
+        # Parse timestamp (format: "YYYY-MM-DD HH:MM:SS")
+        dt = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+        now = datetime.now()
+        diff = now - dt
+
+        seconds = int(diff.total_seconds())
+        if seconds < 0:
+            return "just now"
+        elif seconds < 60:
+            return f"{seconds}s ago"
+        elif seconds < 3600:
+            mins = seconds // 60
+            return f"{mins}m ago"
+        elif seconds < 86400:
+            hours = seconds // 3600
+            return f"{hours}h ago"
+        else:
+            days = seconds // 86400
+            return f"{days}d ago"
+    except Exception:
+        return timestamp_str  # Fallback to original string
+
 setup_windows_encoding()
 
 
@@ -135,6 +162,7 @@ def cmd_status(args):
             terminal = data.get("terminal", "wezterm")
             pane_id = data.get("pane_id", "")
             active = data.get("active", False)
+            started_at = data.get("started_at", "")
 
             if terminal == "wezterm" and pane_id:
                 backend = WeztermBackend()
@@ -151,6 +179,7 @@ def cmd_status(args):
                 "terminal": terminal,
                 "pane_id": pane_id,
                 "runtime_dir": data.get("runtime_dir", ""),
+                "started_at": started_at,
             }
         except Exception as e:
             results[provider] = {"status": f"Error: {e}", "active": False}
@@ -162,7 +191,13 @@ def cmd_status(args):
     print_msg(f"📊 {t('backend_status')}")
     for provider, info in results.items():
         icon = "✅" if info.get("active") else "❌"
-        print_msg(f"  {icon} {provider.capitalize()}: {info['status']}")
+        status_text = info['status']
+        # Add relative time for running sessions
+        started_at = info.get("started_at", "")
+        if info.get("active") and started_at:
+            relative = time_ago(started_at)
+            status_text = f"{status_text} (started {relative})"
+        print_msg(f"  {icon} {provider.capitalize()}: {status_text}")
         if info.get("pane_id"):
             print_msg(f"     {info.get('terminal', 'wezterm')}: {info['pane_id']}")
 
