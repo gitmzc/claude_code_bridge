@@ -721,6 +721,23 @@ Examples:
 - 方案1 (异步): 并行执行 `Bash(cask "...")` 和 `Bash(gask "...")`，然后用 `Bash(cpend)`/`Bash(gpend)` 查看结果
 - 方案2 (同步顺序): 先执行 `Bash(cask-w "...")`，再执行 `Bash(gask-w "...")`，汇总两者结果
 - 禁止对 cask-w/gask-w 使用 run_in_background=true
+
+---
+
+## Serena 项目记忆
+
+当发现重要的项目知识时，使用 Serena MCP 工具记录：
+- `write_memory`: 写入项目记忆（架构决策、约定、注意事项）
+- `read_memory`: 读取项目记忆
+- `list_memories`: 列出所有记忆
+
+触发时机：
+- 发现重要的架构决策或设计模式
+- 用户明确说明的项目约定
+- 踩坑经验或注意事项
+- 跨会话需要记住的信息
+
+首次使用时需激活项目：说 "Activate the current project using serena"
 <!-- CCB_CONFIG_END -->
 AI_RULES
   local ccb_content
@@ -833,6 +850,23 @@ install_codex_agents_config() {
 - 简洁明了，直击重点
 - 适当使用 emoji 增强可读性
 - 代码块使用正确的语言标识
+
+---
+
+### Serena 项目记忆
+
+当发现重要的项目知识时，使用 Serena MCP 工具记录：
+- `write_memory`: 写入项目记忆（架构决策、约定、注意事项）
+- `read_memory`: 读取项目记忆
+- `list_memories`: 列出所有记忆
+
+触发时机：
+- 发现重要的架构决策或设计模式
+- 用户明确说明的项目约定
+- 踩坑经验或注意事项
+- 跨会话需要记住的信息
+
+首次使用时需激活项目：说 "Activate the current dir as project using serena"
 CODEX_RULES
 
   cp -f "$codex_tmpfile" "$agents_md"
@@ -904,6 +938,23 @@ install_gemini_config() {
 - 简洁明了，直击重点
 - 适当使用 emoji 增强可读性
 - 代码块使用正确的语言标识
+
+---
+
+### Serena 项目记忆
+
+当发现重要的项目知识时，使用 Serena MCP 工具记录：
+- `write_memory`: 写入项目记忆（架构决策、约定、注意事项）
+- `read_memory`: 读取项目记忆
+- `list_memories`: 列出所有记忆
+
+触发时机：
+- 发现重要的架构决策或设计模式
+- 用户明确说明的项目约定
+- 踩坑经验或注意事项
+- 跨会话需要记住的信息
+
+首次使用时需激活项目：说 "Activate the current project using serena"
 GEMINI_RULES
 
   cp -f "$gemini_tmpfile" "$gemini_md"
