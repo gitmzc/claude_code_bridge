@@ -2,6 +2,8 @@ Forward commands to Codex session via `cask` command (supports WezTerm / iTerm2,
 
 Execution:
 - Run silently `Bash(cask "<content>")`, no additional analysis or operations after execution
+- ⚠️ IMMEDIATELY END your turn after execution
+- ❌ DO NOT wait for result or continue working
 - Can also run `cask <content>` in terminal with same effect
 
 Parameters:

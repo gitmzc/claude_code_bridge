@@ -2,6 +2,8 @@ Forward commands to Gemini session via `gask` command (supports WezTerm / iTerm2
 
 Execution:
 - Run silently `Bash(gask "<content>")`, no additional analysis or operations after execution
+- ⚠️ IMMEDIATELY END your turn after execution
+- ❌ DO NOT wait for result or continue working
 - Can also run `gask <content>` in terminal with same effect
 
 Parameters:
