@@ -130,12 +130,18 @@ def main() -> int:
                 offset_info = pending.get("offset_info")
                 if offset_info and isinstance(offset_info, (list, tuple)) and len(offset_info) == 2:
                     # New format: offset_info = [byte_offset, partial_msgs]
-                    offset_info = (int(offset_info[0]), list(offset_info[1]) if offset_info[1] else [])
+                    try:
+                        byte_offset = int(offset_info[0]) if offset_info[0] is not None else 0
+                    except (TypeError, ValueError):
+                        byte_offset = 0
+                    # Ensure partial_msgs is a list (not string or other iterable)
+                    partial_msgs = offset_info[1] if isinstance(offset_info[1], list) else []
+                    offset_info = (byte_offset, partial_msgs)
                 else:
                     # Legacy format: offset = int (convert to offset_info tuple)
                     try:
                         offset = int(pending.get("offset", 0) or 0)
-                    except Exception:
+                    except (TypeError, ValueError):
                         offset = 0
                     offset_info = (offset, [])
                 state = {"log_path": log_path, "offset_info": offset_info}

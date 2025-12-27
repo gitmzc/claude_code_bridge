@@ -38,8 +38,13 @@ def main(argv: list[str]) -> int:
                 data = json.load(handle)
             # Save offset_info tuple (byte_offset, partial_msgs) for CodexLogReader compatibility
             offset_info = state.get("offset_info", (0, []))
-            if isinstance(offset_info, tuple) and len(offset_info) == 2:
-                byte_offset, partial_msgs = offset_info
+            # Accept both tuple and list forms of offset_info
+            if isinstance(offset_info, (tuple, list)) and len(offset_info) == 2:
+                try:
+                    byte_offset = int(offset_info[0]) if offset_info[0] is not None else 0
+                except (TypeError, ValueError):
+                    byte_offset = 0
+                partial_msgs = list(offset_info[1]) if isinstance(offset_info[1], (list, tuple)) else []
             else:
                 byte_offset, partial_msgs = 0, []
             data["pending_state"] = {
