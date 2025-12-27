@@ -259,27 +259,16 @@ class AILauncher:
         """
         Returns (session_id, has_any_history_for_cwd).
         Session id is Codex CLI's UUID used by `codex resume <id>`.
+        Always scans for the latest session to avoid resuming stale sessions.
         """
-        # Only trust local project state; deleting local dotfiles should reset resume behavior.
-        project_session = Path.cwd() / ".codex-session"
-        if project_session.exists():
-            data = self._read_json_file(project_session)
-            cached = data.get("codex_session_id")
-            if isinstance(cached, str) and cached:
-                recorded_norm = extract_session_work_dir_norm(data)
-                if recorded_norm:
-                    work_keys = work_dir_match_keys(Path.cwd())
-                    if not work_keys or recorded_norm in work_keys:
-                        return cached, True
-
-        # Fallback: scan Codex session logs for the latest session bound to this cwd.
-        # This handles cases where `.codex-session` exists but never got updated with `codex_session_id`
-        # (e.g., user closed the backend before sending any message through the bridge).
-        root = Path(os.environ.get("CODEX_SESSION_ROOT") or (Path.home() / ".codex" / "sessions")).expanduser()
-        if not root.exists():
-            return None, False
         work_keys = work_dir_match_keys(Path.cwd())
         if not work_keys:
+            return None, False
+
+        # Always scan Codex session logs for the latest session bound to this cwd.
+        # This ensures we always resume the most recent session, not a stale cached one.
+        root = Path(os.environ.get("CODEX_SESSION_ROOT") or (Path.home() / ".codex" / "sessions")).expanduser()
+        if not root.exists():
             return None, False
         try:
             logs = sorted(
