@@ -13,6 +13,7 @@ script_dir = Path(__file__).resolve().parent
 lib_dir = script_dir.parent / "lib"
 sys.path.insert(0, str(lib_dir))
 from compat import setup_windows_encoding
+from output import emoji, spinner_chars, is_tty
 setup_windows_encoding()
 
 
@@ -23,7 +24,7 @@ def main(argv: list[str]) -> int:
 
     message = " ".join(argv[1:]).strip()
     if not message:
-        print("❌ Message cannot be empty", file=sys.stderr)
+        print(f"{emoji('❌')} Message cannot be empty", file=sys.stderr)
         return 1
 
     from codex_comm import CodexCommunicator
@@ -66,19 +67,19 @@ def main(argv: list[str]) -> int:
         if not healthy:
             # Interactive recovery: ask user if they want to start the session
             if sys.stdin.isatty():
-                print(f"⚠️  Codex session not active: {status}", file=sys.stderr)
+                print(f"{emoji('⚠️')}  Codex session not active: {status}", file=sys.stderr)
                 try:
                     response = input("Start Codex now? [Y/n]: ").strip().lower()
                 except (EOFError, KeyboardInterrupt):
                     response = "n"
 
                 if response in ("", "y", "yes"):
-                    print("🚀 Starting Codex...", flush=True)
+                    print(f"{emoji('🚀')} Starting Codex...", flush=True)
                     from launcher import AILauncher
                     launcher = AILauncher(providers=["codex"], resume=False, auto=False, no_claude=True)
                     result = launcher.run_up()
                     if result != 0:
-                        print("❌ Failed to start Codex", file=sys.stderr)
+                        print(f"{emoji('❌')} Failed to start Codex", file=sys.stderr)
                         return 1
                     # Wait for session to become healthy with polling (max 10s)
                     import time
@@ -93,21 +94,25 @@ def main(argv: list[str]) -> int:
                         healthy, status = comm._check_session_health_impl(probe_terminal=False)
                         if healthy:
                             break
-                        print(f"\r⏳ Waiting for Codex to be ready... ({waited:.0f}s)   ", end="", flush=True)
-                    print("\r" + " " * 50 + "\r", end="", flush=True)  # Clear line
+                        if is_tty():
+                            print(f"\r{emoji('⏳')} Waiting for Codex to be ready... ({waited:.0f}s)   ", end="", flush=True)
+                        else:
+                            print(f"{emoji('⏳')} Waiting for Codex... ({waited:.0f}s)", flush=True)
+                    if is_tty():
+                        print("\r" + " " * 50 + "\r", end="", flush=True)  # Clear line
                     if not healthy:
-                        print(f"❌ Session not ready after {max_wait:.0f}s: {status}", file=sys.stderr)
+                        print(f"{emoji('❌')} Session not ready after {max_wait:.0f}s: {status}", file=sys.stderr)
                         return 1
-                    print("✅ Codex started successfully", flush=True)
+                    print(f"{emoji('✅')} Codex started successfully", flush=True)
                 else:
-                    print("❌ Cancelled", file=sys.stderr)
+                    print(f"{emoji('❌')} Cancelled", file=sys.stderr)
                     return 1
             else:
-                print(f"❌ Session error: {status}", file=sys.stderr)
+                print(f"{emoji('❌')} Session error: {status}", file=sys.stderr)
                 return 1
 
         # Send message
-        print(f"🔔 {t('sending_to', provider='Codex')}", flush=True)
+        print(f"{emoji('🔔')} {t('sending_to', provider='Codex')}", flush=True)
         marker, state = comm._send_payload(message)
         comm._remember_session(state.get("log_path") or comm.log_reader.current_log_path())
 
@@ -116,8 +121,8 @@ def main(argv: list[str]) -> int:
         # Progressive heartbeat: starts at 2s, increases to 5s, then 10s
         heartbeat_intervals = [2.0, 2.0, 2.0, 5.0, 5.0, 10.0]  # First 3 at 2s, next 2 at 5s, then 10s
         heartbeat_idx = 0
-        # Spinner characters for dynamic feedback
-        spinner_chars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+        # Spinner characters for dynamic feedback (TTY-aware)
+        spin_chars = spinner_chars()
         spinner_idx = 0
 
         # Wait with periodic heartbeat to let Claude know we're still waiting
@@ -146,14 +151,17 @@ def main(argv: list[str]) -> int:
             # Output heartbeat if interval passed
             now = time.monotonic()
             if now - last_heartbeat >= current_interval:
-                spinner = spinner_chars[spinner_idx % len(spinner_chars)]
+                spinner = spin_chars[spinner_idx % len(spin_chars)]
                 spinner_idx += 1
-                print(f"\r{spinner} Waiting for Codex... ({int(elapsed)}s)   ", end="", flush=True)
+                if is_tty():
+                    print(f"\r{spinner} Waiting for Codex... ({int(elapsed)}s)   ", end="", flush=True)
+                else:
+                    print(f"{spinner} Waiting for Codex... ({int(elapsed)}s)", flush=True)
                 last_heartbeat = now
                 heartbeat_idx += 1
 
         # Clear the spinner line before output
-        if spinner_idx > 0:
+        if spinner_idx > 0 and is_tty():
             print("\r" + " " * 40 + "\r", end="", flush=True)
 
         # Save to cache
@@ -162,11 +170,11 @@ def main(argv: list[str]) -> int:
         reply_file = cache_dir / "codex_last_reply.txt"
 
         if message_reply:
-            print(f"🤖 {t('reply_from', provider='Codex')}")
+            print(f"{emoji('🤖')} {t('reply_from', provider='Codex')}")
             print(message_reply)
             reply_file.write_text(message_reply, encoding="utf-8")
         else:
-            print(f"⏰ Timeout after {int(sync_timeout)}s")
+            print(f"{emoji('⏰')} Timeout after {int(sync_timeout)}s")
             save_pending_state(state)
         return 0
 
@@ -176,10 +184,10 @@ def main(argv: list[str]) -> int:
             save_pending_state(locals().get("state", {}) if isinstance(locals().get("state"), dict) else {})
         except Exception:
             pass
-        print("❌ Interrupted", file=sys.stderr)
+        print(f"{emoji('❌')} Interrupted", file=sys.stderr)
         return 130
     except Exception as exc:
-        print(f"❌ {exc}", file=sys.stderr)
+        print(f"{emoji('❌')} {exc}", file=sys.stderr)
         return 1
 
 

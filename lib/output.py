@@ -1,6 +1,7 @@
 """
 Output control module for ccb.
 Provides quiet mode, debug mode, JSON output formatting, and atomic file writes.
+Also provides TTY-aware output degradation for emoji and spinner characters.
 """
 
 import os
@@ -17,6 +18,55 @@ _json_mode = False
 _debug_mode = False
 _output_data = {}
 _errors = []
+
+# Emoji to text fallback mapping
+_EMOJI_FALLBACK = {
+    "✅": "[OK]",
+    "❌": "[ERROR]",
+    "⚠️": "[WARN]",
+    "📊": "[STATUS]",
+    "🔔": "[INFO]",
+    "🤖": "[AI]",
+    "🚀": "[START]",
+    "⏰": "[TIMEOUT]",
+    "⏳": "[WAIT]",
+    "✨": "[NEW]",
+    "📦": "[UPDATE]",
+    "🔄": "[SYNC]",
+    "🔧": "[FIX]",
+    "ℹ️": "[INFO]",
+}
+
+# Spinner characters for TTY vs non-TTY
+_SPINNER_TTY = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+_SPINNER_PLAIN = "-\\|/"
+
+
+def is_tty() -> bool:
+    """Check if stdout is a TTY (interactive terminal)."""
+    return sys.stdout.isatty() and not _json_mode
+
+
+def emoji(char: str, fallback: Optional[str] = None) -> str:
+    """Return emoji if TTY, otherwise return text fallback.
+
+    Args:
+        char: The emoji character
+        fallback: Optional custom fallback text. If not provided, uses default mapping.
+
+    Returns:
+        The emoji if in TTY mode, otherwise the fallback text.
+    """
+    if is_tty():
+        return char
+    if fallback is not None:
+        return fallback
+    return _EMOJI_FALLBACK.get(char, char)
+
+
+def spinner_chars() -> str:
+    """Return appropriate spinner characters for current environment."""
+    return _SPINNER_TTY if is_tty() else _SPINNER_PLAIN
 
 
 def init_output(quiet: bool = False, json_output: bool = False, debug: bool = False):
