@@ -85,13 +85,23 @@ def main(argv: list[str]) -> int:
                     if result != 0:
                         print("❌ Failed to start Gemini", file=sys.stderr)
                         return 1
-                    # Reload communicator after starting
+                    # Wait for session to become healthy with polling (max 10s)
                     import time
-                    time.sleep(1)  # Wait for session file to be written
-                    comm = GeminiCommunicator(lazy_init=True)
-                    healthy, status = comm._check_session_health_impl(probe_terminal=False)
+                    max_wait = 10.0
+                    poll_interval = 0.5
+                    waited = 0.0
+                    healthy = False
+                    while waited < max_wait:
+                        time.sleep(poll_interval)
+                        waited += poll_interval
+                        comm = GeminiCommunicator(lazy_init=True)
+                        healthy, status = comm._check_session_health_impl(probe_terminal=False)
+                        if healthy:
+                            break
+                        print(f"\r⏳ Waiting for Gemini to be ready... ({waited:.0f}s)   ", end="", flush=True)
+                    print("\r" + " " * 50 + "\r", end="", flush=True)  # Clear line
                     if not healthy:
-                        print(f"❌ Session still not healthy: {status}", file=sys.stderr)
+                        print(f"❌ Session not ready after {max_wait:.0f}s: {status}", file=sys.stderr)
                         return 1
                     print("✅ Gemini started successfully", flush=True)
                 else:

@@ -59,18 +59,18 @@ def time_ago(timestamp_str: str) -> str:
 
         seconds = int(diff.total_seconds())
         if seconds < 0:
-            return "just now"
+            return t("time_just_now")
         elif seconds < 60:
-            return f"{seconds}s ago"
+            return t("time_seconds_ago", n=seconds)
         elif seconds < 3600:
             mins = seconds // 60
-            return f"{mins}m ago"
+            return t("time_minutes_ago", n=mins)
         elif seconds < 86400:
             hours = seconds // 3600
-            return f"{hours}h ago"
+            return t("time_hours_ago", n=hours)
         else:
             days = seconds // 86400
-            return f"{days}d ago"
+            return t("time_days_ago", n=days)
     except Exception:
         return timestamp_str  # Fallback to original string
 

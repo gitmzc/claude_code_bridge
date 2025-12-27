@@ -87,6 +87,13 @@ MESSAGES = {
         "wsl_not_supported": "WSL 1 does not support FIFO pipes, please upgrade to WSL 2",
         "confirm_continue": "Confirm continue? (y/N)",
         "cancelled": "Cancelled",
+
+        # Time ago
+        "time_just_now": "just now",
+        "time_seconds_ago": "{n}s ago",
+        "time_minutes_ago": "{n}m ago",
+        "time_hours_ago": "{n}h ago",
+        "time_days_ago": "{n}d ago",
     },
     "zh": {
         # Terminal detection
@@ -162,6 +169,13 @@ MESSAGES = {
         "wsl_not_supported": "WSL 1 不支持 FIFO 管道，请升级到 WSL 2",
         "confirm_continue": "确认继续？(y/N)",
         "cancelled": "已取消",
+
+        # Time ago
+        "time_just_now": "刚刚",
+        "time_seconds_ago": "{n}秒前",
+        "time_minutes_ago": "{n}分钟前",
+        "time_hours_ago": "{n}小时前",
+        "time_days_ago": "{n}天前",
     },
 }
 
