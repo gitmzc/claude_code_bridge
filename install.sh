@@ -70,6 +70,9 @@ msg() {
     wezterm_recommended)
       en_msg="Recommend installing WezTerm as terminal frontend"
       zh_msg="推荐安装 WezTerm 作为终端前端" ;;
+    root_error)
+      en_msg="ERROR: Do not run as root/sudo. Please run as normal user."
+      zh_msg="错误：请勿以 root/sudo 身份运行。请使用普通用户执行。" ;;
     *)
       en_msg="$key"
       zh_msg="$key" ;;
@@ -80,6 +83,12 @@ msg() {
     echo "$en_msg"
   fi
 }
+
+# Check for root/sudo - refuse to run as root
+if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+  msg root_error >&2
+  exit 1
+fi
 
 SCRIPTS_TO_LINK=(
   bin/cask
@@ -660,6 +669,11 @@ Command selection (always use Bash wrapper):
 - 查看最近 N 轮对话 -> `Bash(cpend N)`
 - 如果 cask-w 超时，使用 `Bash(cpend)` 检查延迟的回复
 
+IMPORTANT RESTRICTIONS:
+- NEVER use cpend/cask-w unless user EXPLICITLY requests
+- After cask, ONLY wait for bash-notification to get results
+- Do NOT try to fetch results yourself
+
 Context awareness (重要):
 - Codex 在独立终端运行，看不到你当前的上下文
 - 发送问题时必须包含相关文件路径和代码片段
@@ -699,6 +713,11 @@ Command selection (always use Bash wrapper):
 - 查看之前的回复 -> `Bash(gpend)`
 - 查看最近 N 轮对话 -> `Bash(gpend N)`
 - 如果 gask-w 超时，使用 `Bash(gpend)` 检查延迟的回复
+
+IMPORTANT RESTRICTIONS:
+- NEVER use gpend/gask-w unless user EXPLICITLY requests
+- After gask, ONLY wait for bash-notification to get results
+- Do NOT try to fetch results yourself
 
 Context awareness (重要):
 - Gemini 在独立终端运行，看不到你当前的上下文
