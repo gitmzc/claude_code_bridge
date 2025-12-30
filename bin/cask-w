@@ -111,6 +111,14 @@ def main(argv: list[str]) -> int:
                 print(f"{emoji('❌')} Session error: {status}", file=sys.stderr)
                 return 1
 
+        # Wait for pane to become idle before sending (avoid interrupting AI output)
+        from pane_idle import wait_for_pane_idle, should_skip_idle_check
+        if comm.pane_id and not should_skip_idle_check():
+            terminal = getattr(comm, 'terminal_type', 'wezterm') or 'wezterm'
+            idle, waited = wait_for_pane_idle(comm.pane_id, terminal)
+            if not idle and is_tty():
+                print(f"{emoji('⚠️')}  Pane still busy after {waited:.1f}s, sending anyway...", file=sys.stderr)
+
         # Send message
         print(f"{emoji('🔔')} {t('sending_to', provider='Codex')}", flush=True)
         marker, state = comm._send_payload(message)
