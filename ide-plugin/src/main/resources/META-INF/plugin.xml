@@ -1,0 +1,47 @@
+<idea-plugin>
+    <id>com.ccb.ide</id>
+    <name>Claude Code Bridge</name>
+    <vendor email="support@ccb.dev" url="https://github.com/bfly123/claude_code_bridge">CCB</vendor>
+
+    <description><![CDATA[
+    Claude Code Bridge - Multi-AI collaboration plugin for JetBrains IDEs.
+
+    Features:
+    - Chat with Claude Code CLI directly from your IDE
+    - Auto-inject selected code as context
+    - View AI responses with Markdown rendering
+    - Support for multiple AI providers (Claude, Codex, Gemini)
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Tool Window -->
+        <toolWindow id="Claude Code Bridge"
+                    secondary="true"
+                    anchor="right"
+                    icon="AllIcons.Actions.Execute"
+                    factoryClass="com.ccb.ide.ui.ChatToolWindowFactory"/>
+
+        <!-- Settings -->
+        <applicationConfigurable
+                parentId="tools"
+                instance="com.ccb.ide.config.CcbSettingsConfigurable"
+                id="com.ccb.ide.config.CcbSettingsConfigurable"
+                displayName="Claude Code Bridge"/>
+
+        <applicationService
+                serviceImplementation="com.ccb.ide.config.CcbSettings"/>
+    </extensions>
+
+    <actions>
+        <!-- Context Menu Action -->
+        <action id="com.ccb.ide.actions.AskAIAction"
+                class="com.ccb.ide.actions.AskAIAction"
+                text="Ask AI..."
+                description="Send selected code to AI assistant">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt A"/>
+        </action>
+    </actions>
+</idea-plugin>
