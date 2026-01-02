@@ -83,20 +83,16 @@ class TerminalToolWindowFactory : ToolWindowFactory {
 
             toolWindow.contentManager.addContent(content)
 
-            // Execute claude command after shell is ready
+            // Execute ccb up command after shell is ready
+            // This will start Codex and Gemini in WezTerm, then Claude in this terminal
             if (widget is ShellTerminalWidget) {
                 executor.schedule({
                     try {
-                        // First launch Codex and Gemini via CCB (in new WezTerm windows)
-                        launchCcbCommand("ccb up codex gemini --no-claude")
-
-                        // Then start Claude in this terminal
-                        val safeCliPath = if (cliPath.contains(" ")) "\"$cliPath\"" else cliPath
-                        widget.executeCommand(safeCliPath)
+                        widget.executeCommand("ccb up codex gemini")
                     } catch (e: Exception) {
                         // Log error but don't crash
                         com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
-                            .warn("Failed to execute claude command: ${e.message}")
+                            .warn("Failed to execute ccb command: ${e.message}")
                     }
                 }, 500, TimeUnit.MILLISECONDS)
             }
