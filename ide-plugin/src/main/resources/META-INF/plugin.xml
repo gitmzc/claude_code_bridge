@@ -40,6 +40,17 @@
     </extensions>
 
     <actions>
+        <!-- Toolbar Button -->
+        <action id="com.ccb.ide.actions.OpenToolWindowAction"
+                class="com.ccb.ide.actions.OpenToolWindowAction"
+                text="Claude Code"
+                description="Open Claude Code Bridge"
+                icon="AllIcons.Actions.Execute">
+            <add-to-group group-id="MainToolBar" anchor="last"/>
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift C"/>
+        </action>
+
         <!-- Context Menu Action -->
         <action id="com.ccb.ide.actions.AskAIAction"
                 class="com.ccb.ide.actions.AskAIAction"
