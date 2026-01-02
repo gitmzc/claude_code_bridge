@@ -140,9 +140,15 @@ class AILauncher:
             if not self.wezterm_panes:
                 # First provider: check pane dimensions to decide direction
                 direction = self._get_smart_split_direction(backend)
+                self._first_split_direction = direction  # Save for subsequent providers
             else:
-                # Subsequent providers: split the first pane vertically (bottom)
-                direction = "bottom"
+                # Subsequent providers: perpendicular to first split
+                # - Wide screen (first=right): Codex right, Gemini below Codex (bottom)
+                # - Narrow screen (first=bottom): Codex below, Gemini right of Codex (right)
+                if getattr(self, '_first_split_direction', 'right') == 'right':
+                    direction = "bottom"
+                else:
+                    direction = "right"
 
             parent_pane = None
             if self.wezterm_panes:
