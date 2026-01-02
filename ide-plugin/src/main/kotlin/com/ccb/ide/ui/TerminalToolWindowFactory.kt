@@ -144,9 +144,9 @@ class TerminalToolWindowFactory : ToolWindowFactory {
 
         // Codex button
         val codexBtn = JButton("Codex", AllIcons.Nodes.Console)
-        codexBtn.toolTipText = "Open Codex via CCB in new terminal tab"
+        codexBtn.toolTipText = "Open Codex via CCB (in WezTerm)"
         codexBtn.addActionListener {
-            openAITerminal(toolWindow, terminalManager, workingDir, "Codex", "ccb up codex")
+            launchCcbCommand("ccb up codex")
         }
         toolbar.add(codexBtn)
 
@@ -154,9 +154,9 @@ class TerminalToolWindowFactory : ToolWindowFactory {
 
         // Gemini button
         val geminiBtn = JButton("Gemini", AllIcons.Nodes.Console)
-        geminiBtn.toolTipText = "Open Gemini via CCB in new terminal tab"
+        geminiBtn.toolTipText = "Open Gemini via CCB (in WezTerm)"
         geminiBtn.addActionListener {
-            openAITerminal(toolWindow, terminalManager, workingDir, "Gemini", "ccb up gemini")
+            launchCcbCommand("ccb up gemini")
         }
         toolbar.add(geminiBtn)
 
@@ -188,6 +188,21 @@ class TerminalToolWindowFactory : ToolWindowFactory {
         } catch (e: Exception) {
             com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
                 .warn("Failed to restart claude: ${e.message}")
+        }
+    }
+
+    /**
+     * Launch a CCB command in the background (opens in WezTerm).
+     */
+    private fun launchCcbCommand(command: String) {
+        val workingDir = currentProject?.basePath ?: System.getProperty("user.home")
+        try {
+            val processBuilder = ProcessBuilder("bash", "-c", command)
+            processBuilder.directory(java.io.File(workingDir))
+            processBuilder.start()
+        } catch (e: Exception) {
+            com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
+                .warn("Failed to launch CCB command: ${e.message}")
         }
     }
 
