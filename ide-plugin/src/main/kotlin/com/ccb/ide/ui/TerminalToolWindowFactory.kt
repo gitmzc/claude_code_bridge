@@ -22,7 +22,7 @@ import java.awt.BorderLayout
  * Tool Window Factory that embeds Claude terminal in IDE.
  *
  * Mixed mode:
- * - Claude runs in IDE embedded terminal (manual start)
+ * - Claude runs in IDE embedded terminal
  * - Codex + Gemini run in WezTerm (new tab with split)
  *
  * This allows cask-w/gask-w communication to work properly since
@@ -37,70 +37,43 @@ class TerminalToolWindowFactory : ToolWindowFactory {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         currentProject = project
 
+        val terminalManager = TerminalToolWindowManager.getInstance(project)
         val workingDir = project.basePath ?: System.getProperty("user.home")
 
         executor = Executors.newSingleThreadScheduledExecutor()
 
-        // Create main panel with toolbar first (even if terminal fails)
-        val mainPanel = JPanel(BorderLayout())
-        val toolbar = createToolbar(project, workingDir)
-        mainPanel.add(toolbar, BorderLayout.NORTH)
+        try {
+            // Create Claude terminal (don't auto-start claude)
+            val widget = terminalManager.createLocalShellWidget(workingDir, "Claude")
+            claudeWidget = widget as? ShellTerminalWidget
 
-        // Placeholder while terminal initializes
-        val loadingLabel = JLabel("Initializing terminal...")
-        mainPanel.add(loadingLabel, BorderLayout.CENTER)
+            val mainPanel = JPanel(BorderLayout())
 
-        val content = ContentFactory.getInstance().createContent(mainPanel, "Claude", false)
-        toolWindow.contentManager.addContent(content)
+            // Toolbar
+            val toolbar = createToolbar(project, workingDir)
+            mainPanel.add(toolbar, BorderLayout.NORTH)
+            mainPanel.add(widget.component, BorderLayout.CENTER)
 
-        // Initialize terminal with delay to ensure project is ready
-        executor?.schedule({
+            val content = ContentFactory.getInstance().createContent(mainPanel, "Claude", false)
+
+            Disposer.register(content, Disposable {
+                executor?.shutdownNow()
+                widget.close()
+                claudeWidget = null
+            })
+
+            toolWindow.contentManager.addContent(content)
+
+            // Don't auto-start Claude - wait for user to click button
+
+        } catch (e: Exception) {
             ApplicationManager.getApplication().invokeLater {
-                try {
-                    // Check if Terminal plugin is available
-                    val terminalManagerClass = try {
-                        Class.forName("org.jetbrains.plugins.terminal.TerminalToolWindowManager")
-                    } catch (e: ClassNotFoundException) {
-                        throw IllegalStateException("Terminal plugin not found - please enable it in Settings > Plugins")
-                    }
-
-                    val terminalManager = TerminalToolWindowManager.getInstance(project)
-
-                    // Create Claude terminal (but don't start claude automatically)
-                    val widget = terminalManager.createLocalShellWidget(workingDir, "Claude")
-                    claudeWidget = widget as? ShellTerminalWidget
-
-                    // Replace loading label with terminal
-                    mainPanel.remove(loadingLabel)
-                    mainPanel.add(widget.component, BorderLayout.CENTER)
-                    mainPanel.revalidate()
-                    mainPanel.repaint()
-
-                    Disposer.register(content, Disposable {
-                        executor?.shutdownNow()
-                        widget.close()
-                        claudeWidget = null
-                    })
-
-                } catch (e: Throwable) {
-                    val errorMessage = "${e.javaClass.simpleName}: ${e.message ?: "no message"}"
-                    com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
-                        .warn("Failed to create terminal: $errorMessage", e)
-
-                    mainPanel.remove(loadingLabel)
-
-                    // Create fallback panel with WezTerm launch option
-                    val fallbackPanel = JPanel(BorderLayout())
-                    val infoLabel = JLabel("<html><center>IDE Terminal unavailable<br><br>Click buttons above to launch AI in WezTerm</center></html>")
-                    infoLabel.horizontalAlignment = SwingConstants.CENTER
-                    fallbackPanel.add(infoLabel, BorderLayout.CENTER)
-
-                    mainPanel.add(fallbackPanel, BorderLayout.CENTER)
-                    mainPanel.revalidate()
-                    mainPanel.repaint()
-                }
+                val errorPanel = JPanel(BorderLayout())
+                errorPanel.add(JLabel("Failed to create terminal: ${e.message}"), BorderLayout.CENTER)
+                val content = ContentFactory.getInstance().createContent(errorPanel, "Error", false)
+                toolWindow.contentManager.addContent(content)
             }
-        }, 1000, TimeUnit.MILLISECONDS)
+        }
     }
 
     /**
@@ -114,7 +87,8 @@ class TerminalToolWindowFactory : ToolWindowFactory {
         val startBtn = JButton("Start All", AllIcons.Actions.Execute)
         startBtn.toolTipText = "Start Claude + Codex + Gemini"
         startBtn.addActionListener {
-            startAll(workingDir, false)
+            launchCodexGemini(workingDir, false)
+            startClaude(false)
         }
         toolbar.add(startBtn)
 
@@ -124,7 +98,8 @@ class TerminalToolWindowFactory : ToolWindowFactory {
         val resumeBtn = JButton("Resume All", AllIcons.Actions.Resume)
         resumeBtn.toolTipText = "Resume last sessions (Claude + Codex + Gemini)"
         resumeBtn.addActionListener {
-            startAll(workingDir, true)
+            launchCodexGemini(workingDir, true)
+            startClaude(true)
         }
         toolbar.add(resumeBtn)
 
@@ -144,17 +119,6 @@ class TerminalToolWindowFactory : ToolWindowFactory {
     }
 
     /**
-     * Start all AI assistants: Claude in IDE + Codex/Gemini in WezTerm.
-     */
-    private fun startAll(workingDir: String, resume: Boolean) {
-        // First launch Codex + Gemini in WezTerm
-        launchCodexGemini(workingDir, resume)
-
-        // Then start Claude in IDE terminal
-        startClaude(resume)
-    }
-
-    /**
      * Start Claude CLI.
      */
     private fun startClaude(resume: Boolean) {
@@ -163,8 +127,7 @@ class TerminalToolWindowFactory : ToolWindowFactory {
         val cliPath = settings.cliPath.ifEmpty { "claude" }
 
         try {
-            // Send Ctrl+C first to ensure clean state
-            widget.executeCommand("\u0003")
+            widget.executeCommand("\u0003") // Ctrl+C first
             executor?.schedule({
                 try {
                     val safeCliPath = if (cliPath.contains(" ")) "\"$cliPath\"" else cliPath
