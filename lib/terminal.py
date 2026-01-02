@@ -310,7 +310,48 @@ class WeztermBackend(TerminalBackend):
     def activate(self, pane_id: str) -> None:
         subprocess.run([*self._cli_base_args(), "activate-pane", "--pane-id", pane_id])
 
+    def _spawn_new_window(self, cmd: str, cwd: str) -> str:
+        """Spawn a new WezTerm window instead of splitting panes."""
+        args = [*self._cli_base_args(), "spawn", "--new-window"]
+        force_wsl = os.environ.get("CCB_BACKEND_ENV", "").lower() == "wsl"
+        use_wsl_launch = (is_wsl() and _is_windows_wezterm()) or (force_wsl and is_windows())
+
+        if use_wsl_launch:
+            in_wsl_pane = bool(os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"))
+            wsl_cwd = cwd
+            wsl_localhost_match = re.match(r'^[/\\]{1,2}wsl\.localhost[/\\][^/\\]+(.+)$', cwd, re.IGNORECASE)
+            if wsl_localhost_match:
+                wsl_cwd = wsl_localhost_match.group(1).replace('\\', '/')
+            elif "\\" in cwd or (len(cwd) > 2 and cwd[1] == ":"):
+                try:
+                    wslpath_cmd = ["wslpath", "-a", cwd] if is_wsl() else ["wsl.exe", "wslpath", "-a", cwd]
+                    result = subprocess.run(wslpath_cmd, capture_output=True, text=True, check=True)
+                    wsl_cwd = result.stdout.strip()
+                except Exception:
+                    pass
+            startup_script = f"cd {shlex.quote(wsl_cwd)} && exec {cmd}"
+            if in_wsl_pane:
+                args.extend(["--", "bash", "-l", "-i", "-c", startup_script])
+            else:
+                args.extend(["--", "wsl.exe", "bash", "-l", "-i", "-c", startup_script])
+        else:
+            args.extend(["--cwd", cwd])
+            shell, flag = _default_shell()
+            args.extend(["--", shell, flag, cmd])
+
+        try:
+            result = subprocess.run(args, capture_output=True, text=True, check=True)
+            return result.stdout.strip()
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"WezTerm spawn failed:\nCommand: {' '.join(args)}\nStderr: {e.stderr}") from e
+
     def create_pane(self, cmd: str, cwd: str, direction: str = "right", percent: int = 50, parent_pane: Optional[str] = None) -> str:
+        # Check if we should spawn a new window instead of splitting
+        spawn_new_window = os.environ.get("CCB_SPAWN_NEW_WINDOW", "").lower() in {"1", "true", "yes", "on"}
+
+        if spawn_new_window:
+            return self._spawn_new_window(cmd, cwd)
+
         args = [*self._cli_base_args(), "split-pane"]
         force_wsl = os.environ.get("CCB_BACKEND_ENV", "").lower() == "wsl"
         use_wsl_launch = (is_wsl() and _is_windows_wezterm()) or (force_wsl and is_windows())

@@ -87,7 +87,10 @@ class TerminalToolWindowFactory : ToolWindowFactory {
             if (widget is ShellTerminalWidget) {
                 executor.schedule({
                     try {
-                        // Quote the path if it contains spaces
+                        // First launch Codex and Gemini via CCB (in new WezTerm windows)
+                        launchCcbCommand("ccb up codex gemini --no-claude")
+
+                        // Then start Claude in this terminal
                         val safeCliPath = if (cliPath.contains(" ")) "\"$cliPath\"" else cliPath
                         widget.executeCommand(safeCliPath)
                     } catch (e: Exception) {
@@ -142,23 +145,13 @@ class TerminalToolWindowFactory : ToolWindowFactory {
         toolbar.add(JSeparator(SwingConstants.VERTICAL))
         toolbar.add(Box.createHorizontalStrut(10))
 
-        // Codex button
-        val codexBtn = JButton("Codex", AllIcons.Nodes.Console)
-        codexBtn.toolTipText = "Open Codex via CCB (in WezTerm)"
-        codexBtn.addActionListener {
-            launchCcbCommand("ccb up codex")
+        // Codex + Gemini button (launches both via CCB)
+        val multiAIBtn = JButton("Codex + Gemini", AllIcons.Nodes.Console)
+        multiAIBtn.toolTipText = "Launch Codex and Gemini via CCB (in new WezTerm windows)"
+        multiAIBtn.addActionListener {
+            launchCcbCommand("ccb up codex gemini --no-claude")
         }
-        toolbar.add(codexBtn)
-
-        toolbar.add(Box.createHorizontalStrut(5))
-
-        // Gemini button
-        val geminiBtn = JButton("Gemini", AllIcons.Nodes.Console)
-        geminiBtn.toolTipText = "Open Gemini via CCB (in WezTerm)"
-        geminiBtn.addActionListener {
-            launchCcbCommand("ccb up gemini")
-        }
-        toolbar.add(geminiBtn)
+        toolbar.add(multiAIBtn)
 
         toolbar.add(Box.createHorizontalGlue())
 
