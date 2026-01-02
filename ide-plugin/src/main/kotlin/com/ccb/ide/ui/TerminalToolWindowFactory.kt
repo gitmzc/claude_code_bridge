@@ -1,8 +1,10 @@
 package com.ccb.ide.ui
 
 import com.ccb.ide.config.CcbSettings
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
@@ -13,8 +15,7 @@ import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
-import javax.swing.JLabel
-import javax.swing.JPanel
+import javax.swing.*
 import java.awt.BorderLayout
 
 /**
@@ -22,10 +23,21 @@ import java.awt.BorderLayout
  *
  * This provides the full TUI experience of Claude Code within the IDE,
  * including session persistence, tool calls, and interactive features.
+ *
+ * Toolbar buttons:
+ * - Restart Claude: Restart the claude CLI
+ * - Settings: Open plugin settings
+ * - Codex: Open Codex in new terminal tab
+ * - Gemini: Open Gemini in new terminal tab
  */
 class TerminalToolWindowFactory : ToolWindowFactory {
 
+    private var currentWidget: ShellTerminalWidget? = null
+    private var currentProject: Project? = null
+    private var currentExecutor: ScheduledExecutorService? = null
+
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
+        currentProject = project
         val settings = CcbSettings.getInstance()
         val cliPath = settings.cliPath.ifEmpty { "claude" }
 
@@ -38,21 +50,35 @@ class TerminalToolWindowFactory : ToolWindowFactory {
         try {
             // Create terminal widget
             val widget = terminalManager.createLocalShellWidget(workingDir, "Claude Code")
+            currentWidget = widget as? ShellTerminalWidget
 
-            // Add widget's component to the tool window
+            // Create main panel with toolbar
+            val mainPanel = JPanel(BorderLayout())
+
+            // Create toolbar
+            val toolbar = createToolbar(project, toolWindow, terminalManager, workingDir)
+            mainPanel.add(toolbar, BorderLayout.NORTH)
+
+            // Add terminal widget
+            mainPanel.add(widget.component, BorderLayout.CENTER)
+
+            // Add panel to the tool window
             val content = ContentFactory.getInstance().createContent(
-                widget.component,
+                mainPanel,
                 "Claude Code",
                 false
             )
 
             // Create executor for delayed command execution
             val executor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
+            currentExecutor = executor
 
             // Register disposable for cleanup (widget + executor)
             Disposer.register(content, Disposable {
                 executor.shutdownNow()
                 widget.close()
+                currentWidget = null
+                currentExecutor = null
             })
 
             toolWindow.contentManager.addContent(content)
@@ -79,6 +105,135 @@ class TerminalToolWindowFactory : ToolWindowFactory {
                 val content = ContentFactory.getInstance().createContent(errorPanel, "Error", false)
                 toolWindow.contentManager.addContent(content)
             }
+        }
+    }
+
+    /**
+     * Create toolbar with action buttons.
+     */
+    private fun createToolbar(
+        project: Project,
+        toolWindow: ToolWindow,
+        terminalManager: TerminalToolWindowManager,
+        workingDir: String
+    ): JPanel {
+        val toolbar = JPanel()
+        toolbar.layout = BoxLayout(toolbar, BoxLayout.X_AXIS)
+
+        // Restart Claude button
+        val restartBtn = JButton("Restart", AllIcons.Actions.Restart)
+        restartBtn.toolTipText = "Restart Claude CLI"
+        restartBtn.addActionListener {
+            restartClaude()
+        }
+        toolbar.add(restartBtn)
+
+        toolbar.add(Box.createHorizontalStrut(5))
+
+        // Settings button
+        val settingsBtn = JButton("Settings", AllIcons.General.Settings)
+        settingsBtn.toolTipText = "Open Claude Code Bridge Settings"
+        settingsBtn.addActionListener {
+            ShowSettingsUtil.getInstance().showSettingsDialog(project, "Claude Code Bridge")
+        }
+        toolbar.add(settingsBtn)
+
+        toolbar.add(Box.createHorizontalStrut(10))
+        toolbar.add(JSeparator(SwingConstants.VERTICAL))
+        toolbar.add(Box.createHorizontalStrut(10))
+
+        // Codex button
+        val codexBtn = JButton("Codex", AllIcons.Nodes.Console)
+        codexBtn.toolTipText = "Open Codex in new terminal tab"
+        codexBtn.addActionListener {
+            openAITerminal(toolWindow, terminalManager, workingDir, "Codex", "codex")
+        }
+        toolbar.add(codexBtn)
+
+        toolbar.add(Box.createHorizontalStrut(5))
+
+        // Gemini button
+        val geminiBtn = JButton("Gemini", AllIcons.Nodes.Console)
+        geminiBtn.toolTipText = "Open Gemini in new terminal tab"
+        geminiBtn.addActionListener {
+            openAITerminal(toolWindow, terminalManager, workingDir, "Gemini", "gemini")
+        }
+        toolbar.add(geminiBtn)
+
+        toolbar.add(Box.createHorizontalGlue())
+
+        return toolbar
+    }
+
+    /**
+     * Restart Claude CLI in the current terminal.
+     */
+    private fun restartClaude() {
+        val widget = currentWidget ?: return
+        val settings = CcbSettings.getInstance()
+        val cliPath = settings.cliPath.ifEmpty { "claude" }
+
+        try {
+            // Send Ctrl+C to stop current process, then restart
+            widget.executeCommand("\u0003") // Ctrl+C
+            currentExecutor?.schedule({
+                try {
+                    val safeCliPath = if (cliPath.contains(" ")) "\"$cliPath\"" else cliPath
+                    widget.executeCommand(safeCliPath)
+                } catch (e: Exception) {
+                    com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
+                        .warn("Failed to restart claude: ${e.message}")
+                }
+            }, 300, TimeUnit.MILLISECONDS)
+        } catch (e: Exception) {
+            com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
+                .warn("Failed to restart claude: ${e.message}")
+        }
+    }
+
+    /**
+     * Open a new terminal tab for another AI (Codex or Gemini).
+     */
+    private fun openAITerminal(
+        toolWindow: ToolWindow,
+        terminalManager: TerminalToolWindowManager,
+        workingDir: String,
+        tabName: String,
+        command: String
+    ) {
+        try {
+            val widget = terminalManager.createLocalShellWidget(workingDir, tabName)
+
+            val content = ContentFactory.getInstance().createContent(
+                widget.component,
+                tabName,
+                false
+            )
+
+            val executor = Executors.newSingleThreadScheduledExecutor()
+
+            Disposer.register(content, Disposable {
+                executor.shutdownNow()
+                widget.close()
+            })
+
+            toolWindow.contentManager.addContent(content)
+            toolWindow.contentManager.setSelectedContent(content)
+
+            // Execute AI command after shell is ready
+            if (widget is ShellTerminalWidget) {
+                executor.schedule({
+                    try {
+                        widget.executeCommand(command)
+                    } catch (e: Exception) {
+                        com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
+                            .warn("Failed to execute $command: ${e.message}")
+                    }
+                }, 500, TimeUnit.MILLISECONDS)
+            }
+        } catch (e: Exception) {
+            com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
+                .warn("Failed to create $tabName terminal: ${e.message}")
         }
     }
 }

@@ -19,9 +19,9 @@
     <extensions defaultExtensionNs="com.intellij">
         <!-- Tool Window -->
         <toolWindow id="Claude Code Bridge"
-                    secondary="true"
+                    secondary="false"
                     anchor="right"
-                    icon="AllIcons.Actions.Execute"
+                    icon="AllIcons.Toolwindows.ToolWindowMessages"
                     factoryClass="com.ccb.ide.ui.TerminalToolWindowFactory"/>
 
         <!-- Settings -->
