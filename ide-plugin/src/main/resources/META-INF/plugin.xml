@@ -14,6 +14,7 @@
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.plugins.terminal</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <!-- Tool Window -->
@@ -21,7 +22,7 @@
                     secondary="true"
                     anchor="right"
                     icon="AllIcons.Actions.Execute"
-                    factoryClass="com.ccb.ide.ui.ChatToolWindowFactory"/>
+                    factoryClass="com.ccb.ide.ui.TerminalToolWindowFactory"/>
 
         <!-- Settings -->
         <applicationConfigurable

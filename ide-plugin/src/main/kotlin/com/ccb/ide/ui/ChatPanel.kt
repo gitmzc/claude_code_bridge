@@ -1,7 +1,6 @@
 package com.ccb.ide.ui
 
 import com.ccb.ide.backend.CliProcessManager
-import com.ccb.ide.backend.FileWatcherService
 import com.intellij.openapi.project.Project
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
@@ -27,11 +26,6 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()) {
     private val stopButton = JButton("Stop").apply { isEnabled = false }
 
     private val processManager = CliProcessManager(project)
-    private val fileWatcher = FileWatcherService(project) { message ->
-        SwingUtilities.invokeLater {
-            appendMessage("AI", message)
-        }
-    }
 
     init {
         setupUI()
@@ -81,18 +75,27 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()) {
         val text = inputField.text.trim()
         if (text.isEmpty()) return
 
-        appendMessage("You", text)
-        inputField.text = ""
-
-        // Start CLI if not running
-        if (!processManager.isRunning()) {
-            processManager.start()
-            fileWatcher.startWatching()
+        // Check if already processing
+        if (processManager.isRunning()) {
+            appendMessage("System", "A request is already in progress...")
+            return
         }
 
-        // Send message
-        processManager.sendMessage(text)
+        appendMessage("You", text)
+        inputField.text = ""
         stopButton.isEnabled = true
+
+        // Send message with output callback
+        processManager.sendMessage(text) { output ->
+            SwingUtilities.invokeLater {
+                // Append CLI output directly (filter out ANSI control chars)
+                val cleanOutput = output.replace(Regex("\\x1B\\[[0-9;]*[a-zA-Z]"), "")
+                if (cleanOutput.isNotBlank()) {
+                    messagesArea.append(cleanOutput)
+                    messagesArea.caretPosition = messagesArea.document.length
+                }
+            }
+        }
     }
 
     private fun appendMessage(sender: String, message: String) {
@@ -102,6 +105,5 @@ class ChatPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     fun dispose() {
         processManager.stop()
-        fileWatcher.stopWatching()
     }
 }

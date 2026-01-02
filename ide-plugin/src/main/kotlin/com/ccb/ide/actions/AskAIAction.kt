@@ -6,7 +6,6 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.psi.PsiFile
-import com.intellij.psi.util.PsiTreeUtil
 
 /**
  * Action to send selected code to AI assistant.
@@ -105,23 +104,7 @@ class AskAIAction : AnAction() {
     private fun buildContext(psiFile: PsiFile?, editor: com.intellij.openapi.editor.Editor, selectedText: String): String {
         if (psiFile == null) return ""
 
-        val caretOffset = editor.caretModel.offset
-        val element = psiFile.findElementAt(caretOffset)
-
-        // Try to find containing function/method
-        val containingFunction = PsiTreeUtil.getParentOfType(
-            element,
-            com.intellij.psi.PsiMethod::class.java,
-            com.intellij.psi.PsiNamedElement::class.java
-        )
-
         return buildString {
-            containingFunction?.let {
-                if (it is com.intellij.psi.PsiNamedElement) {
-                    append("Function: ${it.name}\n")
-                }
-            }
-
             // Add line numbers
             val selectionModel = editor.selectionModel
             if (selectionModel.hasSelection()) {
