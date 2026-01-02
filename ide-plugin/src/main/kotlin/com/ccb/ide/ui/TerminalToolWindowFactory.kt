@@ -37,43 +37,61 @@ class TerminalToolWindowFactory : ToolWindowFactory {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         currentProject = project
 
-        val terminalManager = TerminalToolWindowManager.getInstance(project)
         val workingDir = project.basePath ?: System.getProperty("user.home")
 
         executor = Executors.newSingleThreadScheduledExecutor()
 
-        try {
-            // Create Claude terminal (but don't start claude automatically)
-            val widget = terminalManager.createLocalShellWidget(workingDir, "Claude")
-            claudeWidget = widget as? ShellTerminalWidget
+        // Create main panel with toolbar first (even if terminal fails)
+        val mainPanel = JPanel(BorderLayout())
+        val toolbar = createToolbar(project, workingDir)
+        mainPanel.add(toolbar, BorderLayout.NORTH)
 
-            val mainPanel = JPanel(BorderLayout())
+        // Placeholder while terminal initializes
+        val loadingLabel = JLabel("Initializing terminal...")
+        mainPanel.add(loadingLabel, BorderLayout.CENTER)
 
-            // Toolbar
-            val toolbar = createToolbar(project, workingDir)
-            mainPanel.add(toolbar, BorderLayout.NORTH)
-            mainPanel.add(widget.component, BorderLayout.CENTER)
+        val content = ContentFactory.getInstance().createContent(mainPanel, "Claude", false)
+        toolWindow.contentManager.addContent(content)
 
-            val content = ContentFactory.getInstance().createContent(mainPanel, "Claude", false)
-
-            Disposer.register(content, Disposable {
-                executor?.shutdownNow()
-                widget.close()
-                claudeWidget = null
-            })
-
-            toolWindow.contentManager.addContent(content)
-
-            // Don't auto-start Claude - wait for user to click button
-
-        } catch (e: Exception) {
+        // Initialize terminal with delay to ensure project is ready
+        executor?.schedule({
             ApplicationManager.getApplication().invokeLater {
-                val errorPanel = JPanel(BorderLayout())
-                errorPanel.add(JLabel("Failed to create terminal: ${e.message}"), BorderLayout.CENTER)
-                val content = ContentFactory.getInstance().createContent(errorPanel, "Error", false)
-                toolWindow.contentManager.addContent(content)
+                try {
+                    val terminalManager = TerminalToolWindowManager.getInstance(project)
+
+                    // Create Claude terminal (but don't start claude automatically)
+                    val widget = terminalManager.createLocalShellWidget(workingDir, "Claude")
+                    if (widget == null) {
+                        mainPanel.remove(loadingLabel)
+                        mainPanel.add(JLabel("Terminal not available. Use buttons to launch AI."), BorderLayout.CENTER)
+                        mainPanel.revalidate()
+                        return@invokeLater
+                    }
+                    claudeWidget = widget as? ShellTerminalWidget
+
+                    // Replace loading label with terminal
+                    mainPanel.remove(loadingLabel)
+                    mainPanel.add(widget.component, BorderLayout.CENTER)
+                    mainPanel.revalidate()
+
+                    Disposer.register(content, Disposable {
+                        executor?.shutdownNow()
+                        widget.close()
+                        claudeWidget = null
+                    })
+
+                } catch (e: Exception) {
+                    val errorMessage = e.message ?: e.javaClass.simpleName
+                    com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
+                        .warn("Failed to create terminal: $errorMessage", e)
+
+                    mainPanel.remove(loadingLabel)
+                    val errorLabel = JLabel("<html>Terminal unavailable: $errorMessage<br>You can still launch Codex + Gemini in WezTerm.</html>")
+                    mainPanel.add(errorLabel, BorderLayout.CENTER)
+                    mainPanel.revalidate()
+                }
             }
-        }
+        }, 500, TimeUnit.MILLISECONDS)
     }
 
     /**
