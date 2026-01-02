@@ -356,7 +356,8 @@ class AILauncher:
         return None, False
 
     def _build_codex_start_cmd(self) -> str:
-        cmd = "codex -c disable_paste_burst=true --full-auto" if self.auto else "codex -c disable_paste_burst=true"
+        codex_bin = self._find_codex_cmd()
+        cmd = f"{codex_bin} -c disable_paste_burst=true --full-auto" if self.auto else f"{codex_bin} -c disable_paste_burst=true"
         codex_resumed = False
         if self.resume:
             session_id, has_history = self._get_latest_codex_session_id()
@@ -410,7 +411,8 @@ class AILauncher:
         return None, False
 
     def _build_gemini_start_cmd(self) -> str:
-        cmd = "gemini --yolo" if self.auto else "gemini"
+        gemini_bin = self._find_gemini_cmd()
+        cmd = f"{gemini_bin} --yolo" if self.auto else gemini_bin
         if self.resume:
             _, has_history = self._get_latest_gemini_project_hash()
             if has_history:
@@ -593,6 +595,62 @@ class AILauncher:
 
         latest = max(uuid_sessions, key=lambda p: p.stat().st_mtime)
         return latest.stem, True
+
+    def _find_codex_cmd(self) -> str:
+        """Find Codex CLI executable"""
+        if sys.platform == "win32":
+            for cmd in ["codex.exe", "codex.cmd", "codex.bat", "codex"]:
+                path = shutil.which(cmd)
+                if path:
+                    return path
+            npm_paths = [
+                Path(os.environ.get("APPDATA", "")) / "npm" / "codex.cmd",
+                Path(os.environ.get("LOCALAPPDATA", "")) / "pnpm" / "codex.cmd",
+            ]
+            for npm_path in npm_paths:
+                if npm_path.exists():
+                    return str(npm_path)
+        else:
+            path = shutil.which("codex")
+            if path:
+                return path
+            # Check common install locations
+            for check_path in [
+                Path.home() / "Library" / "pnpm" / "codex",
+                Path.home() / ".local" / "bin" / "codex",
+                Path("/usr/local/bin/codex"),
+            ]:
+                if check_path.exists():
+                    return str(check_path)
+        return "codex"  # Fallback to command name
+
+    def _find_gemini_cmd(self) -> str:
+        """Find Gemini CLI executable"""
+        if sys.platform == "win32":
+            for cmd in ["gemini.exe", "gemini.cmd", "gemini.bat", "gemini"]:
+                path = shutil.which(cmd)
+                if path:
+                    return path
+            npm_paths = [
+                Path(os.environ.get("APPDATA", "")) / "npm" / "gemini.cmd",
+                Path(os.environ.get("LOCALAPPDATA", "")) / "pnpm" / "gemini.cmd",
+            ]
+            for npm_path in npm_paths:
+                if npm_path.exists():
+                    return str(npm_path)
+        else:
+            path = shutil.which("gemini")
+            if path:
+                return path
+            # Check common install locations
+            for check_path in [
+                Path.home() / "Library" / "pnpm" / "gemini",
+                Path.home() / ".local" / "bin" / "gemini",
+                Path("/usr/local/bin/gemini"),
+            ]:
+                if check_path.exists():
+                    return str(check_path)
+        return "gemini"  # Fallback to command name
 
     def _find_claude_cmd(self) -> str:
         """Find Claude CLI executable"""

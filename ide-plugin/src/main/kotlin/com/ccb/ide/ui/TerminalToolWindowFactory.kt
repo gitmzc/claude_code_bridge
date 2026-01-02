@@ -22,7 +22,7 @@ import java.awt.BorderLayout
  * Tool Window Factory that embeds Claude terminal in IDE.
  *
  * Mixed mode:
- * - Claude runs in IDE embedded terminal
+ * - Claude runs in IDE embedded terminal (manual start)
  * - Codex + Gemini run in WezTerm (new tab with split)
  *
  * This allows cask-w/gask-w communication to work properly since
@@ -36,8 +36,6 @@ class TerminalToolWindowFactory : ToolWindowFactory {
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         currentProject = project
-        val settings = CcbSettings.getInstance()
-        val cliPath = settings.cliPath.ifEmpty { "claude" }
 
         val terminalManager = TerminalToolWindowManager.getInstance(project)
         val workingDir = project.basePath ?: System.getProperty("user.home")
@@ -45,7 +43,7 @@ class TerminalToolWindowFactory : ToolWindowFactory {
         executor = Executors.newSingleThreadScheduledExecutor()
 
         try {
-            // Create Claude terminal
+            // Create Claude terminal (but don't start claude automatically)
             val widget = terminalManager.createLocalShellWidget(workingDir, "Claude")
             claudeWidget = widget as? ShellTerminalWidget
 
@@ -66,18 +64,7 @@ class TerminalToolWindowFactory : ToolWindowFactory {
 
             toolWindow.contentManager.addContent(content)
 
-            // Execute claude command
-            if (widget is ShellTerminalWidget) {
-                executor?.schedule({
-                    try {
-                        val safeCliPath = if (cliPath.contains(" ")) "\"$cliPath\"" else cliPath
-                        widget.executeCommand(safeCliPath)
-                    } catch (e: Exception) {
-                        com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
-                            .warn("Failed to execute claude command: ${e.message}")
-                    }
-                }, 500, TimeUnit.MILLISECONDS)
-            }
+            // Don't auto-start Claude - wait for user to click button
 
         } catch (e: Exception) {
             ApplicationManager.getApplication().invokeLater {
@@ -96,13 +83,23 @@ class TerminalToolWindowFactory : ToolWindowFactory {
         val toolbar = JPanel()
         toolbar.layout = BoxLayout(toolbar, BoxLayout.X_AXIS)
 
-        // Restart Claude button
-        val restartBtn = JButton("Restart", AllIcons.Actions.Restart)
-        restartBtn.toolTipText = "Restart Claude CLI"
-        restartBtn.addActionListener {
-            restartClaude()
+        // Start Claude button
+        val startBtn = JButton("Start Claude", AllIcons.Actions.Execute)
+        startBtn.toolTipText = "Start Claude CLI"
+        startBtn.addActionListener {
+            startClaude(false)
         }
-        toolbar.add(restartBtn)
+        toolbar.add(startBtn)
+
+        toolbar.add(Box.createHorizontalStrut(5))
+
+        // Resume Claude button
+        val resumeBtn = JButton("Resume", AllIcons.Actions.Resume)
+        resumeBtn.toolTipText = "Resume last Claude session"
+        resumeBtn.addActionListener {
+            startClaude(true)
+        }
+        toolbar.add(resumeBtn)
 
         toolbar.add(Box.createHorizontalStrut(5))
 
@@ -122,9 +119,19 @@ class TerminalToolWindowFactory : ToolWindowFactory {
         val launchBtn = JButton("Launch Codex + Gemini", AllIcons.Nodes.Console)
         launchBtn.toolTipText = "Launch Codex and Gemini in WezTerm (new tab with split)"
         launchBtn.addActionListener {
-            launchCodexGemini(workingDir)
+            launchCodexGemini(workingDir, false)
         }
         toolbar.add(launchBtn)
+
+        toolbar.add(Box.createHorizontalStrut(5))
+
+        // Resume Codex + Gemini button
+        val resumeAIBtn = JButton("Resume AI", AllIcons.Actions.Resume)
+        resumeAIBtn.toolTipText = "Resume last Codex and Gemini sessions"
+        resumeAIBtn.addActionListener {
+            launchCodexGemini(workingDir, true)
+        }
+        toolbar.add(resumeAIBtn)
 
         toolbar.add(Box.createHorizontalGlue())
 
@@ -132,27 +139,29 @@ class TerminalToolWindowFactory : ToolWindowFactory {
     }
 
     /**
-     * Restart Claude CLI.
+     * Start Claude CLI.
      */
-    private fun restartClaude() {
+    private fun startClaude(resume: Boolean) {
         val widget = claudeWidget ?: return
         val settings = CcbSettings.getInstance()
         val cliPath = settings.cliPath.ifEmpty { "claude" }
 
         try {
-            widget.executeCommand("\u0003") // Ctrl+C
+            // Send Ctrl+C first to ensure clean state
+            widget.executeCommand("\u0003")
             executor?.schedule({
                 try {
                     val safeCliPath = if (cliPath.contains(" ")) "\"$cliPath\"" else cliPath
-                    widget.executeCommand(safeCliPath)
+                    val cmd = if (resume) "$safeCliPath --continue" else safeCliPath
+                    widget.executeCommand(cmd)
                 } catch (e: Exception) {
                     com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
-                        .warn("Failed to restart claude: ${e.message}")
+                        .warn("Failed to start claude: ${e.message}")
                 }
             }, 300, TimeUnit.MILLISECONDS)
         } catch (e: Exception) {
             com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
-                .warn("Failed to restart claude: ${e.message}")
+                .warn("Failed to start claude: ${e.message}")
         }
     }
 
@@ -160,23 +169,24 @@ class TerminalToolWindowFactory : ToolWindowFactory {
      * Launch Codex and Gemini in WezTerm new tab with split.
      * Uses CCB_NEW_TAB=1 to open in new tab, then split for second provider.
      */
-    private fun launchCodexGemini(workingDir: String) {
+    private fun launchCodexGemini(workingDir: String, resume: Boolean) {
         try {
             // Show notification that we're launching
             com.intellij.notification.NotificationGroupManager.getInstance()
                 .getNotificationGroup("Claude Code Bridge")
                 ?.createNotification(
-                    "Launching Codex + Gemini in WezTerm...",
+                    if (resume) "Resuming Codex + Gemini..." else "Launching Codex + Gemini in WezTerm...",
                     com.intellij.notification.NotificationType.INFORMATION
                 )
                 ?.notify(currentProject)
 
-            // Use zsh login shell (macOS default) or full path for ccb
+            // Use full path for ccb and add -r flag for resume
             val home = System.getProperty("user.home")
             val ccbPath = "$home/.local/bin/ccb"
+            val resumeFlag = if (resume) " -r" else ""
             val processBuilder = ProcessBuilder(
                 "zsh", "-l", "-c",
-                "CCB_NEW_TAB=1 $ccbPath up codex gemini --no-claude"
+                "CCB_NEW_TAB=1 $ccbPath up codex gemini --no-claude$resumeFlag"
             )
             processBuilder.directory(java.io.File(workingDir))
             processBuilder.redirectErrorStream(true)
