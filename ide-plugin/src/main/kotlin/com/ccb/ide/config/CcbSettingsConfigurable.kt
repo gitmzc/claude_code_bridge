@@ -7,6 +7,8 @@ import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.FormBuilder
 import javax.swing.JComponent
 import javax.swing.JPanel
+import javax.swing.JSpinner
+import javax.swing.SpinnerNumberModel
 
 class CcbSettingsConfigurable : Configurable {
 
@@ -16,6 +18,7 @@ class CcbSettingsConfigurable : Configurable {
     private var autoInjectCheckbox: JBCheckBox? = null
     private var notificationsCheckbox: JBCheckBox? = null
     private var autoOpenCheckbox: JBCheckBox? = null
+    private var fontSizeSpinner: JSpinner? = null
 
     override fun getDisplayName(): String = "Claude Code Bridge"
 
@@ -25,10 +28,12 @@ class CcbSettingsConfigurable : Configurable {
         autoInjectCheckbox = JBCheckBox("Auto-inject selected code as context")
         notificationsCheckbox = JBCheckBox("Show notifications")
         autoOpenCheckbox = JBCheckBox("Auto-open on project startup")
+        fontSizeSpinner = JSpinner(SpinnerNumberModel(14, 8, 32, 1))
 
         panel = FormBuilder.createFormBuilder()
             .addLabeledComponent(JBLabel("CLI Path (leave empty for 'claude'):"), cliPathField!!, 1, false)
             .addLabeledComponent(JBLabel("Default Provider:"), providerField!!, 1, false)
+            .addLabeledComponent(JBLabel("Terminal Font Size:"), fontSizeSpinner!!, 1, false)
             .addComponent(autoInjectCheckbox!!, 1)
             .addComponent(notificationsCheckbox!!, 1)
             .addComponent(autoOpenCheckbox!!, 1)
@@ -44,7 +49,8 @@ class CcbSettingsConfigurable : Configurable {
                providerField?.text != settings.defaultProvider ||
                autoInjectCheckbox?.isSelected != settings.autoInjectContext ||
                notificationsCheckbox?.isSelected != settings.showNotifications ||
-               autoOpenCheckbox?.isSelected != settings.autoOpenOnStartup
+               autoOpenCheckbox?.isSelected != settings.autoOpenOnStartup ||
+               (fontSizeSpinner?.value as? Int) != settings.terminalFontSize
     }
 
     override fun apply() {
@@ -54,6 +60,7 @@ class CcbSettingsConfigurable : Configurable {
         settings.autoInjectContext = autoInjectCheckbox?.isSelected ?: true
         settings.showNotifications = notificationsCheckbox?.isSelected ?: true
         settings.autoOpenOnStartup = autoOpenCheckbox?.isSelected ?: false
+        settings.terminalFontSize = (fontSizeSpinner?.value as? Int) ?: 14
     }
 
     override fun reset() {
@@ -63,6 +70,7 @@ class CcbSettingsConfigurable : Configurable {
         autoInjectCheckbox?.isSelected = settings.autoInjectContext
         notificationsCheckbox?.isSelected = settings.showNotifications
         autoOpenCheckbox?.isSelected = settings.autoOpenOnStartup
+        fontSizeSpinner?.value = settings.terminalFontSize
     }
 
     override fun disposeUIResources() {
@@ -72,5 +80,6 @@ class CcbSettingsConfigurable : Configurable {
         autoInjectCheckbox = null
         notificationsCheckbox = null
         autoOpenCheckbox = null
+        fontSizeSpinner = null
     }
 }

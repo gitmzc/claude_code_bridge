@@ -18,6 +18,7 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import javax.swing.*
 import java.awt.BorderLayout
+import java.awt.Font
 
 /**
  * Tool Window Factory that embeds Claude terminal in IDE.
@@ -71,6 +72,10 @@ class TerminalToolWindowFactory : ToolWindowFactory {
 
             toolWindow.contentManager.addContent(content)
 
+            // Apply initial font size from settings
+            val settings = CcbSettings.getInstance()
+            applyFontSize(settings.terminalFontSize)
+
             // Don't auto-start Claude - wait for user to click button
 
         } catch (e: Exception) {
@@ -120,6 +125,29 @@ class TerminalToolWindowFactory : ToolWindowFactory {
 
         toolbar.add(Box.createHorizontalStrut(5))
 
+        // Font size controls
+        val fontLabel = JLabel("Font:")
+        toolbar.add(fontLabel)
+        toolbar.add(Box.createHorizontalStrut(3))
+
+        val decreaseFontBtn = JButton("-")
+        decreaseFontBtn.toolTipText = "Decrease font size"
+        decreaseFontBtn.addActionListener {
+            adjustFontSize(-1)
+        }
+        toolbar.add(decreaseFontBtn)
+
+        toolbar.add(Box.createHorizontalStrut(2))
+
+        val increaseFontBtn = JButton("+")
+        increaseFontBtn.toolTipText = "Increase font size"
+        increaseFontBtn.addActionListener {
+            adjustFontSize(1)
+        }
+        toolbar.add(increaseFontBtn)
+
+        toolbar.add(Box.createHorizontalStrut(5))
+
         // Settings button
         val settingsBtn = JButton("Settings", AllIcons.General.Settings)
         settingsBtn.toolTipText = "Open Claude Code Bridge Settings"
@@ -131,6 +159,37 @@ class TerminalToolWindowFactory : ToolWindowFactory {
         toolbar.add(Box.createHorizontalGlue())
 
         return toolbar
+    }
+
+    /**
+     * Adjust terminal font size.
+     */
+    private fun adjustFontSize(delta: Int) {
+        val settings = CcbSettings.getInstance()
+        val newSize = (settings.terminalFontSize + delta).coerceIn(8, 32)
+        settings.terminalFontSize = newSize
+
+        // Apply font size to terminal
+        applyFontSize(newSize)
+    }
+
+    /**
+     * Apply font size to terminal widget.
+     */
+    private fun applyFontSize(size: Int) {
+        val widget = claudeWidget ?: return
+        try {
+            // Access JediTermWidget and set font
+            val terminalPanel = widget.terminalPanel
+            val currentFont = terminalPanel.font
+            val newFont = Font(currentFont.family, currentFont.style, size)
+            terminalPanel.font = newFont
+            terminalPanel.revalidate()
+            terminalPanel.repaint()
+        } catch (e: Exception) {
+            com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
+                .warn("Failed to apply font size: ${e.message}")
+        }
     }
 
     /**
