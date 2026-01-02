@@ -144,9 +144,9 @@ class TerminalToolWindowFactory : ToolWindowFactory {
 
         // Codex button
         val codexBtn = JButton("Codex", AllIcons.Nodes.Console)
-        codexBtn.toolTipText = "Open Codex in new terminal tab"
+        codexBtn.toolTipText = "Open Codex via CCB in new terminal tab"
         codexBtn.addActionListener {
-            openAITerminal(toolWindow, terminalManager, workingDir, "Codex", "codex")
+            openAITerminal(toolWindow, terminalManager, workingDir, "Codex", "ccb up codex")
         }
         toolbar.add(codexBtn)
 
@@ -154,9 +154,9 @@ class TerminalToolWindowFactory : ToolWindowFactory {
 
         // Gemini button
         val geminiBtn = JButton("Gemini", AllIcons.Nodes.Console)
-        geminiBtn.toolTipText = "Open Gemini in new terminal tab"
+        geminiBtn.toolTipText = "Open Gemini via CCB in new terminal tab"
         geminiBtn.addActionListener {
-            openAITerminal(toolWindow, terminalManager, workingDir, "Gemini", "gemini")
+            openAITerminal(toolWindow, terminalManager, workingDir, "Gemini", "ccb up gemini")
         }
         toolbar.add(geminiBtn)
 
