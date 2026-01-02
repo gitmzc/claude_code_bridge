@@ -84,11 +84,11 @@ class TerminalToolWindowFactory : ToolWindowFactory {
             toolWindow.contentManager.addContent(content)
 
             // Execute ccb up command after shell is ready
-            // This will start Codex and Gemini in WezTerm, then Claude in this terminal
+            // CCB_SPAWN_NEW_WINDOW=1 makes Codex and Gemini open in new WezTerm windows
             if (widget is ShellTerminalWidget) {
                 executor.schedule({
                     try {
-                        widget.executeCommand("ccb up codex gemini")
+                        widget.executeCommand("CCB_SPAWN_NEW_WINDOW=1 ccb up codex gemini")
                     } catch (e: Exception) {
                         // Log error but don't crash
                         com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
