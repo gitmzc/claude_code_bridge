@@ -15,7 +15,8 @@ class CcbSettings : PersistentStateComponent<CcbSettings.State> {
         var cliPath: String = "",
         var defaultProvider: String = "claude",
         var autoInjectContext: Boolean = true,
-        var showNotifications: Boolean = true
+        var showNotifications: Boolean = true,
+        var autoOpenOnStartup: Boolean = false
     )
 
     private var myState = State()
@@ -41,6 +42,10 @@ class CcbSettings : PersistentStateComponent<CcbSettings.State> {
     var showNotifications: Boolean
         get() = myState.showNotifications
         set(value) { myState.showNotifications = value }
+
+    var autoOpenOnStartup: Boolean
+        get() = myState.autoOpenOnStartup
+        set(value) { myState.autoOpenOnStartup = value }
 
     companion object {
         fun getInstance(): CcbSettings {

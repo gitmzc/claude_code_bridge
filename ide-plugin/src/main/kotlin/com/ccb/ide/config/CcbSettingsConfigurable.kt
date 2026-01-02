@@ -15,6 +15,7 @@ class CcbSettingsConfigurable : Configurable {
     private var providerField: JBTextField? = null
     private var autoInjectCheckbox: JBCheckBox? = null
     private var notificationsCheckbox: JBCheckBox? = null
+    private var autoOpenCheckbox: JBCheckBox? = null
 
     override fun getDisplayName(): String = "Claude Code Bridge"
 
@@ -23,12 +24,14 @@ class CcbSettingsConfigurable : Configurable {
         providerField = JBTextField()
         autoInjectCheckbox = JBCheckBox("Auto-inject selected code as context")
         notificationsCheckbox = JBCheckBox("Show notifications")
+        autoOpenCheckbox = JBCheckBox("Auto-open on project startup")
 
         panel = FormBuilder.createFormBuilder()
             .addLabeledComponent(JBLabel("CLI Path (leave empty for 'claude'):"), cliPathField!!, 1, false)
             .addLabeledComponent(JBLabel("Default Provider:"), providerField!!, 1, false)
             .addComponent(autoInjectCheckbox!!, 1)
             .addComponent(notificationsCheckbox!!, 1)
+            .addComponent(autoOpenCheckbox!!, 1)
             .addComponentFillVertically(JPanel(), 0)
             .panel
 
@@ -40,7 +43,8 @@ class CcbSettingsConfigurable : Configurable {
         return cliPathField?.text != settings.cliPath ||
                providerField?.text != settings.defaultProvider ||
                autoInjectCheckbox?.isSelected != settings.autoInjectContext ||
-               notificationsCheckbox?.isSelected != settings.showNotifications
+               notificationsCheckbox?.isSelected != settings.showNotifications ||
+               autoOpenCheckbox?.isSelected != settings.autoOpenOnStartup
     }
 
     override fun apply() {
@@ -49,6 +53,7 @@ class CcbSettingsConfigurable : Configurable {
         settings.defaultProvider = providerField?.text ?: "claude"
         settings.autoInjectContext = autoInjectCheckbox?.isSelected ?: true
         settings.showNotifications = notificationsCheckbox?.isSelected ?: true
+        settings.autoOpenOnStartup = autoOpenCheckbox?.isSelected ?: false
     }
 
     override fun reset() {
@@ -57,6 +62,7 @@ class CcbSettingsConfigurable : Configurable {
         providerField?.text = settings.defaultProvider
         autoInjectCheckbox?.isSelected = settings.autoInjectContext
         notificationsCheckbox?.isSelected = settings.showNotifications
+        autoOpenCheckbox?.isSelected = settings.autoOpenOnStartup
     }
 
     override fun disposeUIResources() {
@@ -65,5 +71,6 @@ class CcbSettingsConfigurable : Configurable {
         providerField = null
         autoInjectCheckbox = null
         notificationsCheckbox = null
+        autoOpenCheckbox = null
     }
 }

@@ -34,7 +34,7 @@
         <applicationService
                 serviceImplementation="com.ccb.ide.config.CcbSettings"/>
 
-        <!-- Auto-open on project startup -->
+        <!-- Auto-open on project startup (controlled by settings) -->
         <postStartupActivity
                 implementation="com.ccb.ide.startup.CcbStartupActivity"/>
     </extensions>
