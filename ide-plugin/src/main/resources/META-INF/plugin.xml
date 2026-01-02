@@ -37,6 +37,11 @@
         <!-- Auto-open on project startup (controlled by settings) -->
         <postStartupActivity
                 implementation="com.ccb.ide.startup.CcbStartupActivity"/>
+
+        <!-- Notification Group -->
+        <notificationGroup id="Claude Code Bridge"
+                           displayType="BALLOON"
+                           toolWindowId="Claude Code Bridge"/>
     </extensions>
 
     <actions>

@@ -162,6 +162,15 @@ class TerminalToolWindowFactory : ToolWindowFactory {
      */
     private fun launchCodexGemini(workingDir: String) {
         try {
+            // Show notification that we're launching
+            com.intellij.notification.NotificationGroupManager.getInstance()
+                .getNotificationGroup("Claude Code Bridge")
+                ?.createNotification(
+                    "Launching Codex + Gemini in WezTerm...",
+                    com.intellij.notification.NotificationType.INFORMATION
+                )
+                ?.notify(currentProject)
+
             // Use login shell to load user's PATH, set CCB_NEW_TAB=1 for new tab mode
             val processBuilder = ProcessBuilder(
                 "bash", "-l", "-c",
@@ -175,17 +184,48 @@ class TerminalToolWindowFactory : ToolWindowFactory {
             Thread {
                 try {
                     val output = process.inputStream.bufferedReader().readText()
+                    val exitCode = process.waitFor()
+
+                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                        if (exitCode == 0) {
+                            com.intellij.notification.NotificationGroupManager.getInstance()
+                                .getNotificationGroup("Claude Code Bridge")
+                                ?.createNotification(
+                                    "Codex + Gemini launched successfully!",
+                                    com.intellij.notification.NotificationType.INFORMATION
+                                )
+                                ?.notify(currentProject)
+                        } else {
+                            com.intellij.notification.NotificationGroupManager.getInstance()
+                                .getNotificationGroup("Claude Code Bridge")
+                                ?.createNotification(
+                                    "Failed to launch: $output",
+                                    com.intellij.notification.NotificationType.ERROR
+                                )
+                                ?.notify(currentProject)
+                        }
+                    }
+
                     if (output.isNotBlank()) {
                         com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
                             .info("CCB launch output: $output")
                     }
                 } catch (e: Exception) {
-                    // Ignore read errors
+                    com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
+                        .warn("CCB launch error: ${e.message}")
                 }
             }.start()
         } catch (e: Exception) {
             com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
                 .warn("Failed to launch Codex + Gemini: ${e.message}")
+
+            com.intellij.notification.NotificationGroupManager.getInstance()
+                .getNotificationGroup("Claude Code Bridge")
+                ?.createNotification(
+                    "Failed to launch: ${e.message}",
+                    com.intellij.notification.NotificationType.ERROR
+                )
+                ?.notify(currentProject)
         }
     }
 }
