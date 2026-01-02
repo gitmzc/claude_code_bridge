@@ -17,6 +17,13 @@ from output import emoji, spinner_chars, is_tty
 setup_windows_encoding()
 
 
+def _get_project_hash() -> str:
+    """Get hash of current working directory for project isolation"""
+    import hashlib
+    cwd = str(Path.cwd().resolve())
+    return hashlib.sha256(cwd.encode()).hexdigest()[:12]
+
+
 def main(argv: list[str]) -> int:
     if len(argv) <= 1:
         print("Usage: gask-w <message>", file=sys.stderr)
@@ -53,10 +60,11 @@ def main(argv: list[str]) -> int:
         except Exception:
             return
 
-    # Save to cache
+    # Save to cache (project-scoped)
     cache_dir = Path.home() / ".cache" / "ccb"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    reply_file = cache_dir / "gemini_last_reply.txt"
+    project_hash = _get_project_hash()
+    reply_file = cache_dir / f"gemini_last_reply_{project_hash}.txt"
     # Clear stale cache
     if reply_file.exists():
         try:
@@ -180,10 +188,11 @@ def main(argv: list[str]) -> int:
 
         comm._remember_session(state.get("session_path") or comm.log_reader.current_log_path())
 
-        # Save to cache
+        # Save to cache (project-scoped)
         cache_dir = Path.home() / ".cache" / "ccb"
         cache_dir.mkdir(parents=True, exist_ok=True)
-        reply_file = cache_dir / "gemini_last_reply.txt"
+        project_hash = _get_project_hash()
+        reply_file = cache_dir / f"gemini_last_reply_{project_hash}.txt"
 
         if message_reply:
             print(f"{emoji('🤖')} {t('reply_from', provider='Gemini')}")

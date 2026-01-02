@@ -27,9 +27,17 @@ except ImportError as exc:
     sys.exit(1)
 
 
+def _get_project_hash() -> str:
+    """Get hash of current working directory for project isolation"""
+    import hashlib
+    cwd = str(Path.cwd().resolve())
+    return hashlib.sha256(cwd.encode()).hexdigest()[:12]
+
+
 def _load_cached_reply() -> str | None:
-    """Load cached reply from background cask-w process"""
-    cache_file = Path.home() / ".cache" / "ccb" / "codex_last_reply.txt"
+    """Load cached reply from background cask-w process (project-scoped)"""
+    project_hash = _get_project_hash()
+    cache_file = Path.home() / ".cache" / "ccb" / f"codex_last_reply_{project_hash}.txt"
     if not cache_file.exists():
         return None
     try:
