@@ -19,21 +19,18 @@ import javax.swing.*
 import java.awt.BorderLayout
 
 /**
- * Tool Window Factory that embeds terminals for Claude, Codex, and Gemini.
+ * Tool Window Factory that embeds Claude terminal in IDE.
  *
- * Layout:
- * - Tab 1: Claude terminal
- * - Tab 2: Codex + Gemini (vertical split)
+ * Mixed mode:
+ * - Claude runs in IDE embedded terminal
+ * - Codex + Gemini run in WezTerm (new tab with split)
  *
- * Toolbar buttons:
- * - Restart: Restart current AI CLI
- * - Settings: Open plugin settings
+ * This allows cask-w/gask-w communication to work properly since
+ * Codex and Gemini are in WezTerm panes.
  */
 class TerminalToolWindowFactory : ToolWindowFactory {
 
     private var claudeWidget: ShellTerminalWidget? = null
-    private var codexWidget: ShellTerminalWidget? = null
-    private var geminiWidget: ShellTerminalWidget? = null
     private var currentProject: Project? = null
     private var executor: ScheduledExecutorService? = null
 
@@ -48,11 +45,39 @@ class TerminalToolWindowFactory : ToolWindowFactory {
         executor = Executors.newSingleThreadScheduledExecutor()
 
         try {
-            // === Tab 1: Claude ===
-            createClaudeTab(project, toolWindow, terminalManager, workingDir, cliPath)
+            // Create Claude terminal
+            val widget = terminalManager.createLocalShellWidget(workingDir, "Claude")
+            claudeWidget = widget as? ShellTerminalWidget
 
-            // === Tab 2: Codex + Gemini (split) ===
-            createCodexGeminiTab(project, toolWindow, terminalManager, workingDir)
+            val mainPanel = JPanel(BorderLayout())
+
+            // Toolbar
+            val toolbar = createToolbar(project, workingDir)
+            mainPanel.add(toolbar, BorderLayout.NORTH)
+            mainPanel.add(widget.component, BorderLayout.CENTER)
+
+            val content = ContentFactory.getInstance().createContent(mainPanel, "Claude", false)
+
+            Disposer.register(content, Disposable {
+                executor?.shutdownNow()
+                widget.close()
+                claudeWidget = null
+            })
+
+            toolWindow.contentManager.addContent(content)
+
+            // Execute claude command
+            if (widget is ShellTerminalWidget) {
+                executor?.schedule({
+                    try {
+                        val safeCliPath = if (cliPath.contains(" ")) "\"$cliPath\"" else cliPath
+                        widget.executeCommand(safeCliPath)
+                    } catch (e: Exception) {
+                        com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
+                            .warn("Failed to execute claude command: ${e.message}")
+                    }
+                }, 500, TimeUnit.MILLISECONDS)
+            }
 
         } catch (e: Exception) {
             ApplicationManager.getApplication().invokeLater {
@@ -65,129 +90,17 @@ class TerminalToolWindowFactory : ToolWindowFactory {
     }
 
     /**
-     * Create Claude tab with toolbar.
-     */
-    private fun createClaudeTab(
-        project: Project,
-        toolWindow: ToolWindow,
-        terminalManager: TerminalToolWindowManager,
-        workingDir: String,
-        cliPath: String
-    ) {
-        val widget = terminalManager.createLocalShellWidget(workingDir, "Claude")
-        claudeWidget = widget as? ShellTerminalWidget
-
-        val mainPanel = JPanel(BorderLayout())
-
-        // Toolbar
-        val toolbar = createToolbar(project, "claude")
-        mainPanel.add(toolbar, BorderLayout.NORTH)
-        mainPanel.add(widget.component, BorderLayout.CENTER)
-
-        val content = ContentFactory.getInstance().createContent(mainPanel, "Claude", false)
-
-        Disposer.register(content, Disposable {
-            widget.close()
-            claudeWidget = null
-        })
-
-        toolWindow.contentManager.addContent(content)
-
-        // Execute claude command
-        if (widget is ShellTerminalWidget) {
-            executor?.schedule({
-                try {
-                    val safeCliPath = if (cliPath.contains(" ")) "\"$cliPath\"" else cliPath
-                    widget.executeCommand(safeCliPath)
-                } catch (e: Exception) {
-                    com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
-                        .warn("Failed to execute claude command: ${e.message}")
-                }
-            }, 500, TimeUnit.MILLISECONDS)
-        }
-    }
-
-    /**
-     * Create Codex + Gemini tab with vertical split.
-     */
-    private fun createCodexGeminiTab(
-        project: Project,
-        toolWindow: ToolWindow,
-        terminalManager: TerminalToolWindowManager,
-        workingDir: String
-    ) {
-        // Create Codex widget
-        val codexTerminal = terminalManager.createLocalShellWidget(workingDir, "Codex")
-        codexWidget = codexTerminal as? ShellTerminalWidget
-
-        // Create Gemini widget
-        val geminiTerminal = terminalManager.createLocalShellWidget(workingDir, "Gemini")
-        geminiWidget = geminiTerminal as? ShellTerminalWidget
-
-        // Create split pane (vertical: top/bottom)
-        val splitPane = JSplitPane(JSplitPane.VERTICAL_SPLIT)
-        splitPane.topComponent = codexTerminal.component
-        splitPane.bottomComponent = geminiTerminal.component
-        splitPane.resizeWeight = 0.5 // Equal split
-        splitPane.dividerSize = 5
-
-        val mainPanel = JPanel(BorderLayout())
-
-        // Toolbar
-        val toolbar = createToolbar(project, "codex+gemini")
-        mainPanel.add(toolbar, BorderLayout.NORTH)
-        mainPanel.add(splitPane, BorderLayout.CENTER)
-
-        val content = ContentFactory.getInstance().createContent(mainPanel, "Codex + Gemini", false)
-
-        Disposer.register(content, Disposable {
-            codexTerminal.close()
-            geminiTerminal.close()
-            codexWidget = null
-            geminiWidget = null
-        })
-
-        toolWindow.contentManager.addContent(content)
-
-        // Execute codex and gemini commands
-        executor?.schedule({
-            try {
-                if (codexTerminal is ShellTerminalWidget) {
-                    codexTerminal.executeCommand("codex")
-                }
-            } catch (e: Exception) {
-                com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
-                    .warn("Failed to execute codex command: ${e.message}")
-            }
-        }, 500, TimeUnit.MILLISECONDS)
-
-        executor?.schedule({
-            try {
-                if (geminiTerminal is ShellTerminalWidget) {
-                    geminiTerminal.executeCommand("gemini")
-                }
-            } catch (e: Exception) {
-                com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
-                    .warn("Failed to execute gemini command: ${e.message}")
-            }
-        }, 600, TimeUnit.MILLISECONDS)
-    }
-
-    /**
      * Create toolbar with action buttons.
      */
-    private fun createToolbar(project: Project, mode: String): JPanel {
+    private fun createToolbar(project: Project, workingDir: String): JPanel {
         val toolbar = JPanel()
         toolbar.layout = BoxLayout(toolbar, BoxLayout.X_AXIS)
 
-        // Restart button
+        // Restart Claude button
         val restartBtn = JButton("Restart", AllIcons.Actions.Restart)
-        restartBtn.toolTipText = "Restart AI CLI"
+        restartBtn.toolTipText = "Restart Claude CLI"
         restartBtn.addActionListener {
-            when (mode) {
-                "claude" -> restartClaude()
-                "codex+gemini" -> restartCodexGemini()
-            }
+            restartClaude()
         }
         toolbar.add(restartBtn)
 
@@ -200,6 +113,18 @@ class TerminalToolWindowFactory : ToolWindowFactory {
             ShowSettingsUtil.getInstance().showSettingsDialog(project, "Claude Code Bridge")
         }
         toolbar.add(settingsBtn)
+
+        toolbar.add(Box.createHorizontalStrut(10))
+        toolbar.add(JSeparator(SwingConstants.VERTICAL))
+        toolbar.add(Box.createHorizontalStrut(10))
+
+        // Launch Codex + Gemini button (in WezTerm new tab with split)
+        val launchBtn = JButton("Launch Codex + Gemini", AllIcons.Nodes.Console)
+        launchBtn.toolTipText = "Launch Codex and Gemini in WezTerm (new tab with split)"
+        launchBtn.addActionListener {
+            launchCodexGemini(workingDir)
+        }
+        toolbar.add(launchBtn)
 
         toolbar.add(Box.createHorizontalGlue())
 
@@ -232,33 +157,35 @@ class TerminalToolWindowFactory : ToolWindowFactory {
     }
 
     /**
-     * Restart Codex and Gemini CLIs.
+     * Launch Codex and Gemini in WezTerm new tab with split.
+     * Uses CCB_NEW_TAB=1 to open in new tab, then split for second provider.
      */
-    private fun restartCodexGemini() {
+    private fun launchCodexGemini(workingDir: String) {
         try {
-            codexWidget?.executeCommand("\u0003")
-            geminiWidget?.executeCommand("\u0003")
+            // Use login shell to load user's PATH, set CCB_NEW_TAB=1 for new tab mode
+            val processBuilder = ProcessBuilder(
+                "bash", "-l", "-c",
+                "CCB_NEW_TAB=1 ccb up codex gemini --no-claude"
+            )
+            processBuilder.directory(java.io.File(workingDir))
+            processBuilder.redirectErrorStream(true)
+            val process = processBuilder.start()
 
-            executor?.schedule({
+            // Log output in background thread
+            Thread {
                 try {
-                    codexWidget?.executeCommand("codex")
+                    val output = process.inputStream.bufferedReader().readText()
+                    if (output.isNotBlank()) {
+                        com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
+                            .info("CCB launch output: $output")
+                    }
                 } catch (e: Exception) {
-                    com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
-                        .warn("Failed to restart codex: ${e.message}")
+                    // Ignore read errors
                 }
-            }, 300, TimeUnit.MILLISECONDS)
-
-            executor?.schedule({
-                try {
-                    geminiWidget?.executeCommand("gemini")
-                } catch (e: Exception) {
-                    com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
-                        .warn("Failed to restart gemini: ${e.message}")
-                }
-            }, 400, TimeUnit.MILLISECONDS)
+            }.start()
         } catch (e: Exception) {
             com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
-                .warn("Failed to restart codex/gemini: ${e.message}")
+                .warn("Failed to launch Codex + Gemini: ${e.message}")
         }
     }
 }

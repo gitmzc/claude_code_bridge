@@ -126,18 +126,33 @@ class AILauncher:
         keep_open = os.environ.get("CODEX_WEZTERM_KEEP_OPEN", "1").lower() not in {"0", "false", "no", "off"}
         if keep_open:
             start_cmd = _build_keep_open_cmd(provider, start_cmd)
-        # Layout: first backend splits to the right of current pane, subsequent backends stack below
-        # the first backend pane to form a right-side column (top/bottom).
-        direction = "right" if not self.wezterm_panes else "bottom"
-        parent_pane = None
-        if direction == "bottom":
-            try:
-                parent_pane = next(iter(self.wezterm_panes.values()))
-            except StopIteration:
-                parent_pane = None
 
         backend = WeztermBackend()
-        pane_id = backend.create_pane(start_cmd, str(Path.cwd()), direction=direction, percent=50, parent_pane=parent_pane)
+
+        # Check for new tab mode: first provider opens new tab, subsequent split in that tab
+        new_tab_mode = os.environ.get("CCB_NEW_TAB", "").lower() in {"1", "true", "yes", "on"}
+
+        if new_tab_mode and not self.wezterm_panes:
+            # First provider: spawn new tab
+            pane_id = backend.spawn_new_tab(start_cmd, str(Path.cwd()))
+        else:
+            # Determine split direction based on pane dimensions or default layout
+            if not self.wezterm_panes:
+                # First provider: check pane dimensions to decide direction
+                direction = self._get_smart_split_direction(backend)
+            else:
+                # Subsequent providers: split the first pane vertically (bottom)
+                direction = "bottom"
+
+            parent_pane = None
+            if self.wezterm_panes:
+                try:
+                    parent_pane = next(iter(self.wezterm_panes.values()))
+                except StopIteration:
+                    parent_pane = None
+
+            pane_id = backend.create_pane(start_cmd, str(Path.cwd()), direction=direction, percent=50, parent_pane=parent_pane)
+
         self.wezterm_panes[provider] = pane_id
 
         if provider == "codex":
@@ -147,6 +162,43 @@ class AILauncher:
 
         print(f"✅ {t('started_backend', provider=provider.capitalize(), terminal='wezterm pane', pane_id=pane_id)}")
         return True
+
+    def _get_smart_split_direction(self, backend: WeztermBackend) -> str:
+        """Determine split direction based on current pane dimensions.
+
+        - Wide pane (landscape): split right (left/right layout)
+        - Tall pane (portrait): split bottom (top/bottom layout)
+        """
+        try:
+            # Get current pane info
+            result = subprocess.run(
+                ["wezterm", "cli", "list", "--format", "json"],
+                capture_output=True, text=True, check=True
+            )
+            panes = json.loads(result.stdout)
+
+            # Find the active pane
+            active_pane = None
+            for pane in panes:
+                if pane.get("is_active"):
+                    active_pane = pane
+                    break
+
+            if active_pane:
+                width = active_pane.get("size", {}).get("cols", 80)
+                height = active_pane.get("size", {}).get("rows", 24)
+
+                # If width > height * 2, it's wide enough for left/right split
+                # Otherwise use top/bottom split
+                if width > height * 2:
+                    return "right"
+                else:
+                    return "bottom"
+        except Exception:
+            pass
+
+        # Default to right (horizontal split)
+        return "right"
 
     def _start_provider_iterm2(self, provider: str) -> bool:
         runtime = self.runtime_dir / provider
