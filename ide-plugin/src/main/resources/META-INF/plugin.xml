@@ -33,6 +33,10 @@
 
         <applicationService
                 serviceImplementation="com.ccb.ide.config.CcbSettings"/>
+
+        <!-- Auto-open on project startup -->
+        <postStartupActivity
+                implementation="com.ccb.ide.startup.CcbStartupActivity"/>
     </extensions>
 
     <actions>
