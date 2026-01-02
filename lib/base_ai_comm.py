@@ -74,7 +74,9 @@ class BaseLogReader(abc.ABC):
                 try:
                     preferred_mtime = self._preferred_log.stat().st_mtime if self._preferred_log.exists() else 0
                     latest_mtime = latest.stat().st_mtime
-                    if latest_mtime > preferred_mtime:
+                    # Use >= instead of > to handle same-second file switches
+                    # _scan_latest() already sorted by mtime, so latest is authoritative
+                    if latest_mtime >= preferred_mtime:
                         self._preferred_log = latest
                 except OSError:
                     self._preferred_log = latest

@@ -120,7 +120,9 @@ class GeminiLogReader(BaseLogReader):
                 try:
                     preferred_mtime = preferred.stat().st_mtime if preferred and preferred.exists() else 0
                     latest_mtime = latest.stat().st_mtime
-                    if latest_mtime > preferred_mtime:
+                    # Use >= instead of > to handle same-second file switches
+                    # _scan_latest_session() already sorted by mtime, so latest is authoritative
+                    if latest_mtime >= preferred_mtime:
                         self._preferred_log = latest
                         try:
                             project_hash = latest.parent.parent.name
