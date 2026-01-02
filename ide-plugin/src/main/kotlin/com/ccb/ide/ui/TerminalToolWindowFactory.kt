@@ -57,22 +57,24 @@ class TerminalToolWindowFactory : ToolWindowFactory {
         executor?.schedule({
             ApplicationManager.getApplication().invokeLater {
                 try {
+                    // Check if Terminal plugin is available
+                    val terminalManagerClass = try {
+                        Class.forName("org.jetbrains.plugins.terminal.TerminalToolWindowManager")
+                    } catch (e: ClassNotFoundException) {
+                        throw IllegalStateException("Terminal plugin not found - please enable it in Settings > Plugins")
+                    }
+
                     val terminalManager = TerminalToolWindowManager.getInstance(project)
 
                     // Create Claude terminal (but don't start claude automatically)
                     val widget = terminalManager.createLocalShellWidget(workingDir, "Claude")
-                    if (widget == null) {
-                        mainPanel.remove(loadingLabel)
-                        mainPanel.add(JLabel("Terminal not available. Use buttons to launch AI."), BorderLayout.CENTER)
-                        mainPanel.revalidate()
-                        return@invokeLater
-                    }
                     claudeWidget = widget as? ShellTerminalWidget
 
                     // Replace loading label with terminal
                     mainPanel.remove(loadingLabel)
                     mainPanel.add(widget.component, BorderLayout.CENTER)
                     mainPanel.revalidate()
+                    mainPanel.repaint()
 
                     Disposer.register(content, Disposable {
                         executor?.shutdownNow()
@@ -80,18 +82,25 @@ class TerminalToolWindowFactory : ToolWindowFactory {
                         claudeWidget = null
                     })
 
-                } catch (e: Exception) {
-                    val errorMessage = e.message ?: e.javaClass.simpleName
+                } catch (e: Throwable) {
+                    val errorMessage = "${e.javaClass.simpleName}: ${e.message ?: "no message"}"
                     com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
                         .warn("Failed to create terminal: $errorMessage", e)
 
                     mainPanel.remove(loadingLabel)
-                    val errorLabel = JLabel("<html>Terminal unavailable: $errorMessage<br>You can still launch Codex + Gemini in WezTerm.</html>")
-                    mainPanel.add(errorLabel, BorderLayout.CENTER)
+
+                    // Create fallback panel with WezTerm launch option
+                    val fallbackPanel = JPanel(BorderLayout())
+                    val infoLabel = JLabel("<html><center>IDE Terminal unavailable<br><br>Click buttons above to launch AI in WezTerm</center></html>")
+                    infoLabel.horizontalAlignment = SwingConstants.CENTER
+                    fallbackPanel.add(infoLabel, BorderLayout.CENTER)
+
+                    mainPanel.add(fallbackPanel, BorderLayout.CENTER)
                     mainPanel.revalidate()
+                    mainPanel.repaint()
                 }
             }
-        }, 500, TimeUnit.MILLISECONDS)
+        }, 1000, TimeUnit.MILLISECONDS)
     }
 
     /**
