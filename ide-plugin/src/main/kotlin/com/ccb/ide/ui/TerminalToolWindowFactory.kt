@@ -12,6 +12,7 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
 import org.jetbrains.plugins.terminal.ShellTerminalWidget
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
+import org.jetbrains.plugins.terminal.TerminalView
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -43,8 +44,14 @@ class TerminalToolWindowFactory : ToolWindowFactory {
         executor = Executors.newSingleThreadScheduledExecutor()
 
         try {
-            // Create Claude terminal (don't auto-start claude)
-            val widget = terminalManager.createLocalShellWidget(workingDir, "Claude")
+            // Try TerminalView first (newer API), fallback to TerminalToolWindowManager
+            val widget = try {
+                val terminalView = TerminalView.getInstance(project)
+                terminalView.createLocalShellWidget(workingDir, "Claude")
+            } catch (e: Exception) {
+                // Fallback to TerminalToolWindowManager
+                terminalManager.createLocalShellWidget(workingDir, "Claude")
+            }
             claudeWidget = widget as? ShellTerminalWidget
 
             val mainPanel = JPanel(BorderLayout())
