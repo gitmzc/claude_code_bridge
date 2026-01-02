@@ -83,21 +83,21 @@ class TerminalToolWindowFactory : ToolWindowFactory {
         val toolbar = JPanel()
         toolbar.layout = BoxLayout(toolbar, BoxLayout.X_AXIS)
 
-        // Start Claude button
-        val startBtn = JButton("Start Claude", AllIcons.Actions.Execute)
-        startBtn.toolTipText = "Start Claude CLI"
+        // Start All button (Claude + Codex + Gemini)
+        val startBtn = JButton("Start All", AllIcons.Actions.Execute)
+        startBtn.toolTipText = "Start Claude + Codex + Gemini"
         startBtn.addActionListener {
-            startClaude(false)
+            startAll(workingDir, false)
         }
         toolbar.add(startBtn)
 
         toolbar.add(Box.createHorizontalStrut(5))
 
-        // Resume Claude button
-        val resumeBtn = JButton("Resume", AllIcons.Actions.Resume)
-        resumeBtn.toolTipText = "Resume last Claude session"
+        // Resume All button
+        val resumeBtn = JButton("Resume All", AllIcons.Actions.Resume)
+        resumeBtn.toolTipText = "Resume last sessions (Claude + Codex + Gemini)"
         resumeBtn.addActionListener {
-            startClaude(true)
+            startAll(workingDir, true)
         }
         toolbar.add(resumeBtn)
 
@@ -111,31 +111,20 @@ class TerminalToolWindowFactory : ToolWindowFactory {
         }
         toolbar.add(settingsBtn)
 
-        toolbar.add(Box.createHorizontalStrut(10))
-        toolbar.add(JSeparator(SwingConstants.VERTICAL))
-        toolbar.add(Box.createHorizontalStrut(10))
-
-        // Launch Codex + Gemini button (in WezTerm new tab with split)
-        val launchBtn = JButton("Launch Codex + Gemini", AllIcons.Nodes.Console)
-        launchBtn.toolTipText = "Launch Codex and Gemini in WezTerm (new tab with split)"
-        launchBtn.addActionListener {
-            launchCodexGemini(workingDir, false)
-        }
-        toolbar.add(launchBtn)
-
-        toolbar.add(Box.createHorizontalStrut(5))
-
-        // Resume Codex + Gemini button
-        val resumeAIBtn = JButton("Resume AI", AllIcons.Actions.Resume)
-        resumeAIBtn.toolTipText = "Resume last Codex and Gemini sessions"
-        resumeAIBtn.addActionListener {
-            launchCodexGemini(workingDir, true)
-        }
-        toolbar.add(resumeAIBtn)
-
         toolbar.add(Box.createHorizontalGlue())
 
         return toolbar
+    }
+
+    /**
+     * Start all AI assistants: Claude in IDE + Codex/Gemini in WezTerm.
+     */
+    private fun startAll(workingDir: String, resume: Boolean) {
+        // First launch Codex + Gemini in WezTerm
+        launchCodexGemini(workingDir, resume)
+
+        // Then start Claude in IDE terminal
+        startClaude(resume)
     }
 
     /**
