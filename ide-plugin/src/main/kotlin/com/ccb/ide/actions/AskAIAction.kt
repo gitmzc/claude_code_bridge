@@ -8,11 +8,19 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.psi.PsiFile
 
 /**
- * Action to send selected code to AI assistant.
+ * Action to send selected code to AI assistant in the embedded terminal.
  *
  * Triggered via:
  * - Right-click context menu "Ask AI..."
  * - Keyboard shortcut Ctrl+Alt+A
+ *
+ * Flow:
+ * 1. Get selected code (or current line)
+ * 2. Ask user for question
+ * 3. Build formatted prompt with file context
+ * 4. Copy to clipboard
+ * 5. Open Tool Window
+ * 6. Notify user to paste (Cmd+V / Ctrl+V)
  */
 class AskAIAction : AnAction() {
 
@@ -40,21 +48,6 @@ class AskAIAction : AnAction() {
             return
         }
 
-        // Build context
-        val context = buildContext(psiFile, editor, selectedText)
-
-        // Open tool window and send message
-        val toolWindow = ToolWindowManager.getInstance(project)
-            .getToolWindow("Claude Code Bridge")
-
-        if (toolWindow != null) {
-            toolWindow.show {
-                // Get the chat panel and send the context
-                // This would need to be implemented with a proper service
-                // For now, just show the tool window
-            }
-        }
-
         // Show input dialog for the question
         val question = Messages.showInputDialog(
             project,
@@ -63,30 +56,35 @@ class AskAIAction : AnAction() {
             Messages.getQuestionIcon()
         )
 
-        if (!question.isNullOrBlank()) {
-            // Format the full prompt
-            val fullPrompt = """
-                |[Context]
-                |File: ${psiFile?.virtualFile?.path ?: "unknown"}
-                |${context}
-                |
-                |Code:
-                |```
-                |$selectedText
-                |```
-                |[/Context]
-                |
-                |$question
-            """.trimMargin()
+        if (question.isNullOrBlank()) return
 
-            // TODO: Send to chat panel
-            // For now, copy to clipboard as a workaround
-            val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
-            clipboard.setContents(java.awt.datatransfer.StringSelection(fullPrompt), null)
+        // Build context info
+        val filePath = psiFile?.virtualFile?.path ?: "unknown"
+        val lineInfo = buildLineInfo(editor, selectionModel)
 
+        // Format the prompt for Claude
+        val prompt = buildPrompt(filePath, lineInfo, selectedText, question)
+
+        // Copy to clipboard
+        copyToClipboard(prompt)
+
+        // Open tool window
+        val toolWindow = ToolWindowManager.getInstance(project)
+            .getToolWindow("Claude Code Bridge")
+
+        if (toolWindow != null) {
+            toolWindow.show {
+                // Show notification after tool window is visible
+                Messages.showInfoMessage(
+                    project,
+                    "Prompt copied to clipboard.\n\nPaste it in the terminal (Cmd+V / Ctrl+V).",
+                    "Ask AI"
+                )
+            }
+        } else {
             Messages.showInfoMessage(
                 project,
-                "Prompt copied to clipboard. Paste it in the Claude Code Bridge panel.",
+                "Prompt copied to clipboard.\n\nOpen Claude Code Bridge and paste (Cmd+V / Ctrl+V).",
                 "Ask AI"
             )
         }
@@ -99,19 +97,45 @@ class AskAIAction : AnAction() {
     }
 
     /**
-     * Build context information from PSI.
+     * Build line number info from selection.
      */
-    private fun buildContext(psiFile: PsiFile?, editor: com.intellij.openapi.editor.Editor, selectedText: String): String {
-        if (psiFile == null) return ""
-
-        return buildString {
-            // Add line numbers
-            val selectionModel = editor.selectionModel
-            if (selectionModel.hasSelection()) {
-                val startLine = editor.document.getLineNumber(selectionModel.selectionStart) + 1
-                val endLine = editor.document.getLineNumber(selectionModel.selectionEnd) + 1
-                append("Lines: $startLine-$endLine\n")
-            }
+    private fun buildLineInfo(
+        editor: com.intellij.openapi.editor.Editor,
+        selectionModel: com.intellij.openapi.editor.SelectionModel
+    ): String {
+        return if (selectionModel.hasSelection()) {
+            val startLine = editor.document.getLineNumber(selectionModel.selectionStart) + 1
+            val endLine = editor.document.getLineNumber(selectionModel.selectionEnd) + 1
+            "Lines $startLine-$endLine"
+        } else {
+            val lineNumber = editor.document.getLineNumber(editor.caretModel.offset) + 1
+            "Line $lineNumber"
         }
+    }
+
+    /**
+     * Build the prompt to send to Claude.
+     * No shell escaping needed since this goes to clipboard, not shell.
+     */
+    private fun buildPrompt(filePath: String, lineInfo: String, code: String, question: String): String {
+        return """
+            |请帮我分析以下代码：
+            |
+            |文件: $filePath ($lineInfo)
+            |
+            |```
+            |$code
+            |```
+            |
+            |问题: $question
+        """.trimMargin()
+    }
+
+    /**
+     * Copy text to system clipboard.
+     */
+    private fun copyToClipboard(text: String) {
+        val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
+        clipboard.setContents(java.awt.datatransfer.StringSelection(text), null)
     }
 }
