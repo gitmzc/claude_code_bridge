@@ -16,8 +16,7 @@ class CcbSettings : PersistentStateComponent<CcbSettings.State> {
         var defaultProvider: String = "claude",
         var autoInjectContext: Boolean = true,
         var showNotifications: Boolean = true,
-        var autoOpenOnStartup: Boolean = false,
-        var terminalFontSize: Int = 14
+        var autoOpenOnStartup: Boolean = false
     )
 
     private var myState = State()
@@ -47,10 +46,6 @@ class CcbSettings : PersistentStateComponent<CcbSettings.State> {
     var autoOpenOnStartup: Boolean
         get() = myState.autoOpenOnStartup
         set(value) { myState.autoOpenOnStartup = value }
-
-    var terminalFontSize: Int
-        get() = myState.terminalFontSize
-        set(value) { myState.terminalFontSize = value }
 
     companion object {
         fun getInstance(): CcbSettings {
