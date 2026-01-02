@@ -147,8 +147,9 @@ class TerminalToolWindowFactory : ToolWindowFactory {
 
         // Codex + Gemini button (launches both via CCB)
         val multiAIBtn = JButton("Codex + Gemini", AllIcons.Nodes.Console)
-        multiAIBtn.toolTipText = "Launch Codex and Gemini via CCB (in new WezTerm windows)"
+        multiAIBtn.toolTipText = "Launch Codex and Gemini via CCB (in WezTerm)"
         multiAIBtn.addActionListener {
+            // Use background process since Claude TUI is running in terminal
             launchCcbCommand("ccb up codex gemini --no-claude")
         }
         toolbar.add(multiAIBtn)
@@ -186,13 +187,30 @@ class TerminalToolWindowFactory : ToolWindowFactory {
 
     /**
      * Launch a CCB command in the background (opens in WezTerm).
+     * Uses login shell to load user's PATH and environment variables.
      */
     private fun launchCcbCommand(command: String) {
         val workingDir = currentProject?.basePath ?: System.getProperty("user.home")
         try {
-            val processBuilder = ProcessBuilder("bash", "-c", command)
+            // Use login shell (-l) to load user's PATH (where ccb is installed)
+            val processBuilder = ProcessBuilder("bash", "-l", "-c", command)
             processBuilder.directory(java.io.File(workingDir))
-            processBuilder.start()
+            // Redirect error stream to see any errors
+            processBuilder.redirectErrorStream(true)
+            val process = processBuilder.start()
+
+            // Log output in background thread
+            Thread {
+                try {
+                    val output = process.inputStream.bufferedReader().readText()
+                    if (output.isNotBlank()) {
+                        com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
+                            .info("CCB command output: $output")
+                    }
+                } catch (e: Exception) {
+                    // Ignore read errors
+                }
+            }.start()
         } catch (e: Exception) {
             com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
                 .warn("Failed to launch CCB command: ${e.message}")
