@@ -67,12 +67,20 @@ class TerminalToolWindowFactory : ToolWindowFactory {
             // Don't auto-start Claude - wait for user to click button
 
         } catch (e: Exception) {
-            ApplicationManager.getApplication().invokeLater {
-                val errorPanel = JPanel(BorderLayout())
-                errorPanel.add(JLabel("Failed to create terminal: ${e.message}"), BorderLayout.CENTER)
-                val content = ContentFactory.getInstance().createContent(errorPanel, "Error", false)
-                toolWindow.contentManager.addContent(content)
-            }
+            // Terminal failed, but still show toolbar with buttons
+            val mainPanel = JPanel(BorderLayout())
+            val toolbar = createToolbar(project, workingDir)
+            mainPanel.add(toolbar, BorderLayout.NORTH)
+
+            val errorLabel = JLabel("<html><center>IDE Terminal unavailable<br><br>Click 'Start All' or 'Resume All' to launch AI in WezTerm</center></html>")
+            errorLabel.horizontalAlignment = SwingConstants.CENTER
+            mainPanel.add(errorLabel, BorderLayout.CENTER)
+
+            val content = ContentFactory.getInstance().createContent(mainPanel, "Claude", false)
+            toolWindow.contentManager.addContent(content)
+
+            com.intellij.openapi.diagnostic.Logger.getInstance(TerminalToolWindowFactory::class.java)
+                .warn("Failed to create terminal: ${e.message}")
         }
     }
 
