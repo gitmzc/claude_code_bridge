@@ -171,10 +171,12 @@ class TerminalToolWindowFactory : ToolWindowFactory {
                 )
                 ?.notify(currentProject)
 
-            // Use login shell to load user's PATH, set CCB_NEW_TAB=1 for new tab mode
+            // Use zsh login shell (macOS default) or full path for ccb
+            val home = System.getProperty("user.home")
+            val ccbPath = "$home/.local/bin/ccb"
             val processBuilder = ProcessBuilder(
-                "bash", "-l", "-c",
-                "CCB_NEW_TAB=1 ccb up codex gemini --no-claude"
+                "zsh", "-l", "-c",
+                "CCB_NEW_TAB=1 $ccbPath up codex gemini --no-claude"
             )
             processBuilder.directory(java.io.File(workingDir))
             processBuilder.redirectErrorStream(true)
