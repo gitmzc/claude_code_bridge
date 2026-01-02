@@ -253,6 +253,22 @@ function Install-ClaudeConfig {
     }
   }
 
+  # Install skills
+  $skillsDir = Join-Path $claudeDir "skills"
+  $srcSkills = Join-Path $repoRoot "skills"
+  if (Test-Path $srcSkills) {
+    if (-not (Test-Path $skillsDir)) {
+      New-Item -ItemType Directory -Path $skillsDir -Force | Out-Null
+    }
+    Get-ChildItem -Path $srcSkills -Directory | ForEach-Object {
+      $destPath = Join-Path $skillsDir $_.Name
+      if (Test-Path $destPath) { Remove-Item -Recurse -Force $destPath }
+      Copy-Item -Recurse $_.FullName $destPath
+      Write-Host "  Installed skill: $($_.Name)"
+    }
+    Write-Host "Updated Claude skills directory: $skillsDir"
+  }
+
   $codexRules = @"
 
 <!-- CCB_CONFIG_START -->
@@ -272,81 +288,33 @@ function Install-ClaudeConfig {
 
 ---
 
-## Codex Collaboration Rules
-Codex is another AI assistant running in a separate terminal session (WezTerm or iTerm2). When user intent involves asking/consulting/collaborating with Codex:
+## Codex Collaboration Rules (cask-w/cask)
 
-**CRITICAL: 必须同步执行 cask-w，禁止使用 run_in_background=true**
+Codex is another AI assistant running in a separate terminal.
 
-Fast path (minimize latency):
-- If the user message starts with any of: ``@codex``, ``codex:``, ``codex：``, ``ask codex``, ``let codex``, ``问codex``, ``让codex``, ``调取codex``, ``/cask-w`` then immediately run:
-  - ``Bash(cask-w "<message>")`` (同步执行，等待完成)
-- If user message is only the prefix (no content), ask a 1-line clarification for what to send.
+**Tool Selection Guide:**
+- Use **cask-w** (synchronous) when you need the answer immediately to formulate your response
+- Use **cask** (async) only for fire-and-forget tasks or notifications
 
-Trigger conditions (any match):
-- User mentions codex/Codex with questioning/requesting tone
-- User wants codex to do something, give advice, or help review
-- User asks about codex's status or previous reply
-
-Command selection (always use Bash wrapper):
-- 需要立即结果 -> ``Bash(cask-w "<question>")`` (同步阻塞直到回复)
-- 长时间任务/不需要等待 -> ``Bash(cask "<question>")`` (fire and forget)
-- 检查连接状态 -> ``Bash(cping)``
-- 查看之前的回复 -> ``Bash(cpend)``
-- 查看最近 N 轮对话 -> ``Bash(cpend N)``
-- 如果 cask-w 超时，使用 ``Bash(cpend)`` 检查延迟的回复
-
-Context awareness (重要):
-- Codex 在独立终端运行，看不到你当前的上下文
-- 发送问题时必须包含相关文件路径和代码片段
-- 错误示例: ``cask-w "重构这个函数"``
-- 正确示例: ``cask-w "重构 lib/utils.py 中的 process_data 函数:\n<代码片段>"``
-
-Examples:
-- "what does codex think" / "问codex怎么看" -> ``Bash(cask-w "...")``
-- "ask codex to review this" -> ``Bash(cask-w "请审查 src/main.py 中的这段代码:\n<粘贴代码>")``
-- "is codex alive" / "codex在吗" -> ``Bash(cping)``
-- "don't wait for reply" / "不用等回复" -> ``Bash(cask "...")``
-- "view codex reply" / "看codex回复" -> ``Bash(cpend)``
+**IMPORTANT RESTRICTIONS:**
+- NEVER use cpend/cask-w unless user EXPLICITLY requests collaboration with Codex
+- After cask (async), ONLY wait for bash-notification to get results
+- Do NOT try to fetch results yourself
 
 ---
 
-## Gemini Collaboration Rules
-Gemini is another AI assistant running in a separate terminal session (WezTerm or iTerm2). When user intent involves asking/consulting/collaborating with Gemini:
+## Gemini Collaboration Rules (gask-w/gask)
 
-**CRITICAL: 必须同步执行 gask-w，禁止使用 run_in_background=true**
+Gemini is another AI assistant running in a separate terminal.
 
-**注意: Gemini 可能会分多条消息回复，需要多次检查 gpend 直到回复完整**
+**Tool Selection Guide:**
+- Use **gask-w** (synchronous) when you need the answer immediately to formulate your response
+- Use **gask** (async) only for fire-and-forget tasks or notifications
 
-Fast path (minimize latency):
-- If the user message starts with any of: ``@gemini``, ``gemini:``, ``gemini：``, ``ask gemini``, ``let gemini``, ``问gemini``, ``让gemini``, ``调取gemini``, ``/gask-w`` then immediately run:
-  - ``Bash(gask-w "<message>")`` (同步执行，等待完成)
-- If user message is only the prefix (no content), ask a 1-line clarification for what to send.
-
-Trigger conditions (any match):
-- User mentions gemini/Gemini with questioning/requesting tone
-- User wants gemini to do something, give advice, or help review
-- User asks about gemini's status or previous reply
-
-Command selection (always use Bash wrapper):
-- 需要立即结果 -> ``Bash(gask-w "<question>")`` (同步阻塞直到回复)
-- 长时间任务/不需要等待 -> ``Bash(gask "<question>")`` (fire and forget)
-- 检查连接状态 -> ``Bash(gping)``
-- 查看之前的回复 -> ``Bash(gpend)``
-- 查看最近 N 轮对话 -> ``Bash(gpend N)``
-- 如果 gask-w 超时，使用 ``Bash(gpend)`` 检查延迟的回复
-
-Context awareness (重要):
-- Gemini 在独立终端运行，看不到你当前的上下文
-- 发送问题时必须包含相关文件路径和代码片段
-- 错误示例: ``gask-w "解释一下这个"``
-- 正确示例: ``gask-w "解释 src/auth.ts 中的认证流程:\n<代码片段>"``
-
-Examples:
-- "what does gemini think" / "问gemini怎么看" -> ``Bash(gask-w "...")``
-- "ask gemini to review this" -> ``Bash(gask-w "请审查 src/main.py 中的这段代码:\n<粘贴代码>")``
-- "is gemini alive" / "gemini在吗" -> ``Bash(gping)``
-- "don't wait for reply" / "不用等回复" -> ``Bash(gask "...")``
-- "view gemini reply" / "看gemini回复" -> ``Bash(gpend)``
+**IMPORTANT RESTRICTIONS:**
+- NEVER use gpend/gask-w unless user EXPLICITLY requests collaboration with Gemini
+- After gask (async), ONLY wait for bash-notification to get results
+- Do NOT try to fetch results yourself
 
 ---
 
@@ -356,6 +324,23 @@ Examples:
 - 方案1 (异步): 并行执行 ``Bash(cask "...")`` 和 ``Bash(gask "...")``, 然后用 ``Bash(cpend)``/``Bash(gpend)`` 查看结果
 - 方案2 (同步顺序): 先执行 ``Bash(cask-w "...")``, 再执行 ``Bash(gask-w "...")``, 汇总两者结果
 - 禁止对 cask-w/gask-w 使用 run_in_background=true
+
+---
+
+## Serena 项目记忆
+
+当发现重要的项目知识时，使用 Serena MCP 工具记录：
+- ``write_memory``: 写入项目记忆（架构决策、约定、注意事项）
+- ``read_memory``: 读取项目记忆
+- ``list_memories``: 列出所有记忆
+
+触发时机：
+- 发现重要的架构决策或设计模式
+- 用户明确说明的项目约定
+- 踩坑经验或注意事项
+- 跨会话需要记住的信息
+
+首次使用时需激活项目：说 "Activate the current project using serena"
 <!-- CCB_CONFIG_END -->
 "@
 
