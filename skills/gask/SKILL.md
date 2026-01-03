@@ -1,6 +1,6 @@
 ---
 name: gask
-description: Forward commands to Gemini session via `gask` command (supports WezTerm / iTerm2, forward only, does not wait for reply).
+description: "Use when user explicitly delegates to Gemini (@gemini, ask gemini, 问gemini, 让gemini) AND says 'don't wait' or '不用等'. Asynchronous - send and return immediately."
 ---
 
 # Ask Gemini (Async)

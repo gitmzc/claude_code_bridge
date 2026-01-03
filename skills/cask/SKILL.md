@@ -1,6 +1,6 @@
 ---
 name: cask
-description: Forward commands to Codex session via `cask` command (supports WezTerm / iTerm2, forward only, does not wait for reply).
+description: "Use when user explicitly delegates to Codex (@codex, ask codex, 问codex, 让codex) AND says 'don't wait' or '不用等'. Asynchronous - send and return immediately."
 ---
 
 # Ask Codex (Async)

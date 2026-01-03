@@ -1,6 +1,6 @@
 ---
 name: cask-w
-description: Forward commands to Codex session and wait for reply synchronously via `cask-w` command.
+description: "Use when user explicitly delegates to Codex (@codex, ask codex, let codex, 问codex, 让codex, 请codex). Synchronous - waits for reply."
 ---
 
 # Ask Codex (Synchronous)

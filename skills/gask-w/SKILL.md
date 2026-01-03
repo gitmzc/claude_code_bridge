@@ -1,6 +1,6 @@
 ---
 name: gask-w
-description: Forward commands to Gemini session and wait for reply synchronously via `gask-w` command.
+description: "Use when user explicitly delegates to Gemini (@gemini, ask gemini, let gemini, 问gemini, 让gemini, 请gemini). Synchronous - waits for reply."
 ---
 
 # Ask Gemini (Synchronous)
