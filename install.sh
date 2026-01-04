@@ -703,6 +703,12 @@ Gemini is another AI assistant running in a separate terminal.
 - 方案2 (同步顺序): 先执行 `Bash(cask-w "...")`，再执行 `Bash(gask-w "...")`，汇总两者结果
 - 禁止对 cask-w/gask-w 使用 run_in_background=true
 
+**⚠️ 重要：异步模式下的等待规则**
+- 使用 cask/gask (异步) 发送后，**必须等待足够时间** 让 AI 处理完成
+- 不要立即调用 cpend/gpend，因为此时 AI 可能还在思考或输出
+- 建议等待至少 10-30 秒再检查结果，或使用 cask-w/gask-w 同步等待
+- 如果 cpend/gpend 返回的是旧回复（如欢迎消息），说明新回复还未完成
+
 ---
 
 ## Serena 项目记忆

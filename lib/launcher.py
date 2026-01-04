@@ -135,20 +135,21 @@ class AILauncher:
         if new_tab_mode and not self.wezterm_panes:
             # First provider: spawn new tab
             pane_id = backend.spawn_new_tab(start_cmd, str(Path.cwd()))
+            # Pre-calculate split direction for subsequent providers based on new tab dimensions
+            # Pass the specific pane_id to get its dimensions
+            self._first_split_direction = self._get_smart_split_direction(backend, target_pane_id=pane_id)
         else:
             # Determine split direction based on pane dimensions or default layout
             if not self.wezterm_panes:
-                # First provider: check pane dimensions to decide direction
+                # First provider (non-new-tab mode): check pane dimensions to decide direction
                 direction = self._get_smart_split_direction(backend)
                 self._first_split_direction = direction  # Save for subsequent providers
             else:
-                # Subsequent providers: perpendicular to first split
-                # - Wide screen (first=right): Codex right, Gemini below Codex (bottom)
-                # - Narrow screen (first=bottom): Codex below, Gemini right of Codex (right)
-                if getattr(self, '_first_split_direction', 'right') == 'right':
-                    direction = "bottom"
-                else:
-                    direction = "right"
+                # Subsequent providers: same direction as first split
+                # This keeps Codex and Gemini in consistent layout:
+                # - Wide screen: both split right (side by side: Codex | Gemini)
+                # - Tall screen: both split bottom (stacked: Codex above Gemini)
+                direction = getattr(self, '_first_split_direction', 'right')
 
             parent_pane = None
             if self.wezterm_panes:
@@ -169,11 +170,18 @@ class AILauncher:
         print(f"✅ {t('started_backend', provider=provider.capitalize(), terminal='wezterm pane', pane_id=pane_id)}")
         return True
 
-    def _get_smart_split_direction(self, backend: WeztermBackend) -> str:
+    def _get_smart_split_direction(self, backend: WeztermBackend, target_pane_id: str = None) -> str:
         """Determine split direction based on current pane dimensions.
 
-        - Wide pane (landscape): split right (left/right layout)
-        - Tall pane (portrait): split bottom (top/bottom layout)
+        Layout logic:
+        - pixel_width >= pixel_height: Codex and Gemini side by side (left/right)
+        - pixel_width < pixel_height: Codex and Gemini stacked (top/bottom)
+        
+        Using pixel dimensions for accurate aspect ratio detection.
+        
+        Args:
+            backend: WezTerm backend instance
+            target_pane_id: Specific pane ID to check dimensions for (optional)
         """
         try:
             # Get current pane info
@@ -183,27 +191,35 @@ class AILauncher:
             )
             panes = json.loads(result.stdout)
 
-            # Find the active pane
-            active_pane = None
-            for pane in panes:
-                if pane.get("is_active"):
-                    active_pane = pane
-                    break
+            target_pane = None
+            
+            if target_pane_id:
+                # Find the specific pane by ID
+                for pane in panes:
+                    if str(pane.get("pane_id")) == str(target_pane_id):
+                        target_pane = pane
+                        break
+            
+            if not target_pane:
+                # Fallback: find the most recently created pane (highest pane_id) that is active
+                active_panes = [p for p in panes if p.get("is_active")]
+                if active_panes:
+                    target_pane = max(active_panes, key=lambda p: p.get("pane_id", 0))
+            
+            if target_pane:
+                # Use pixel dimensions for accurate aspect ratio
+                pixel_width = target_pane.get("size", {}).get("pixel_width", 1920)
+                pixel_height = target_pane.get("size", {}).get("pixel_height", 1080)
 
-            if active_pane:
-                width = active_pane.get("size", {}).get("cols", 80)
-                height = active_pane.get("size", {}).get("rows", 24)
-
-                # If width > height * 2, it's wide enough for left/right split
-                # Otherwise use top/bottom split
-                if width > height * 2:
+                # Simple 1:1 ratio: if wider than tall, split horizontally (side by side)
+                if pixel_width >= pixel_height:
                     return "right"
                 else:
                     return "bottom"
         except Exception:
             pass
 
-        # Default to right (horizontal split)
+        # Default to right (side by side) for normal screens
         return "right"
 
     def _start_provider_iterm2(self, provider: str) -> bool:
